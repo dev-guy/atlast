@@ -17,7 +17,9 @@
 
 */
 
-typedef long atl_int;		      /* Stack integer type */
+#include <types.h>
+
+typedef int32 atl_int;		      /* Stack integer type */
 typedef double atl_real;	      /* Real number type */
 
 /*  External symbols accessible by the calling program.  */
@@ -56,6 +58,9 @@ extern atl_int atl_errline;	      /* Line number where last atl_load()
 
 /*  Entry points  */
 
-extern void atl_init(), atl_mark(), atl_unwind(), atl_break();
-extern int atl_eval(), atl_load();
-extern void atl_memstat();
+extern void atl_init(void), atl_break(void);
+extern int atl_eval(const char *);
+#ifdef ATL_LOAD
+extern int atl_load(FILE *);
+#endif
+extern void atl_memstat(void);

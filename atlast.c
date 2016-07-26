@@ -12,16 +12,22 @@
 
 */
 
+#define NOMANGLE
+#define NOMEMCHECK
+
+#include <fm_mem.h>
+#include <stdarg.h> // scanf
 #include <stdio.h>
-#include <ctype.h>
-#include <stdlib.h>
+#include <ctype.h> // islower etc
+#include <stdlib.h> // malloc
 #include <string.h>
-#include <unistd.h>
+//#include <fm_debug.h>
 #include <time.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h> 
+//#include <sys/types.h>
+
+#include "strtoul.c"
+
+#define ALIGNMENT
 
 #ifdef ALIGNMENT
 #ifdef __TURBOC__
@@ -42,7 +48,7 @@
     application.  */
 
 #ifdef CUSTOM
-#include "atlcfig.h"
+// #include "atlcfig.h"
 #endif
 
 /*  Subpackage configuration.  If INDIVIDUALLY is defined, the inclusion
@@ -51,27 +57,23 @@
 
 #ifndef INDIVIDUALLY
 #define ARRAY			      /* Array subscripting words */
-#define BREAK			      /* Asynchronous break facility */
-#define COMPILERW		      /* Compiler-writing words */
-#define CONIO			      /* Interactive console I/O */
-#define DEFFIELDS		      /* Definition field access for words */
-#define DOUBLE			      /* Double word primitives (2DUP) */
-#define EVALUATE		      /* The EVALUATE primitive */
-#define FILEIO			      /* File I/O primitives */
+//#define BREAK			      /* Asynchronous break facility */
+//#define COMPILERW		      /* Compiler-writing words */
+//#define CONIO			      /* Interactive console I/O */
+//#define DEFFIELDS		      /* Definition field access for words */
+//#define DOUBLE			      /* Double word primitives (2DUP) */
+//#define EVALUATE		      /* The EVALUATE primitive */
+//#define FILEIO			      /* File I/O primitives */
 //#define TCP		      		/* TCP functions */
-//#define WEBSOCKETS          /* Websockets functions */
-//#define GERTBOARD		      /* Gertboard functions */
-//#define I2C					/* I2C functions */
-//#define WIRINGPI			  /* WiringPi functions */
-//#define TELLDUS          		/* Tellstick functions */
-#define MATH			      /* Math functions */
-#define MEMMESSAGE		      /* Print message for stack/heap errors */
-#define PROLOGUE		      /* Prologue processing and auto-init */
-#define REAL			      /* Floating point numbers */
-#define SHORTCUTA		      /* Shortcut integer arithmetic words */
-#define SHORTCUTC		      /* Shortcut integer comparison */
-#define STRING			      /* String functions */
-#define SYSTEM			      /* System command function */
+//#define MATH			      /* Math functions */
+//#define MEMMESSAGE		      /* Print message for stack/heap errors */
+//#define PROLOGUE		      /* Prologue processing and auto-init */
+//#define REAL			      /* Floating point numbers */
+//#define SHORTCUTA		      /* Shortcut integer arithmetic words */
+//#define SHORTCUTC		      /* Shortcut integer comparison */
+//#define STRING			      /* String functions */
+//#define SYSTEM			      /* System command function */
+// #define SLEEP
 #ifndef NOMEMCHECK
 #define TRACE			      /* Execution tracing */
 #define WALKBACK		      /* Walkback trace */
@@ -79,6 +81,9 @@
 #endif /* NOMEMCHECK */
 #endif /* !INDIVIDUALLY */
 
+#ifdef SLEEP
+#include <unistd.h>
+#endif
 
 #include "atldef.h"
 
@@ -86,37 +91,17 @@
 #include <math.h>
 #endif
 
-#ifdef WEBSOCKETS
-#include <nopoll.h>
-#endif
-
-#ifdef GERTBOARD
-#include "gb_common.h"
-#include "gb_spi.h"
-#endif
-
-#ifdef WIRINGPI
-#include <wiringPi.h>
-#endif
-
-#ifdef TELLDUS
-#include "telldus-core.h"
-#endif
-
-#ifdef I2C
-#include <wiringPiI2C.h>
-#endif
-
 /* LINTLIBRARY */
 
 /* Implicit functions (work for all numeric types). */
 
-#ifdef abs
-#undef abs
-#endif
-#define abs(x)	 ((x) < 0    ? -(x) : (x))
-#define max(a,b) ((a) >  (b) ?	(a) : (b))
-#define min(a,b) ((a) <= (b) ?	(a) : (b))
+//#ifdef abs
+//#undef abs
+//#endif
+
+//#define abs(x)	 ((x) < 0    ? -(x) : (x))
+//#define max(a,b) ((a) >  (b) ?	(a) : (b))
+//#define min(a,b) ((a) <= (b) ?	(a) : (b))
 
 /*  Globals imported  */
 
@@ -228,7 +213,7 @@ static char *fopenmodes[] = {
 #endif /* FILEIO */
 
 static char tokbuf[128];	      /* Token buffer */
-static char *instream = NULL;	      /* Current input stream line */
+static const char *instream = NULL;	      /* Current input stream line */
 static long tokint;		      /* Scanned integer */
 #ifdef REAL
 static atl_real tokreal;	      /* Scanned real number */
@@ -273,33 +258,33 @@ static stackitem s_exit, s_lit, s_flit, s_strlit, s_dotparen,
 
 /*  Forward functions  */
 
-STATIC void exword(), trouble();
+STATIC void exword(dictword *);
+STATIC	void	trouble(const char *);
 #ifndef NOMEMCHECK
-STATIC void notcomp(), divzero();
+STATIC void notcomp(void), divzero(void);
 #endif
 #ifdef WALKBACK
-STATIC void pwalkback();
+STATIC void pwalkback(void);
 #endif
 
 /*  ALLOC  --  Allocate memory and error upon exhaustion.  */
 
-static char *alloc(size)
-  unsigned int size;
+static char *alloc(unsigned int size)
 {
     char *cp = malloc(size);
 
 /* printf("\nAlloc %u", size); */
     if (cp == NULL) {
-        V fprintf(stderr, "\n\nOut of memory!  %u bytes requested.\n", size);
-	abort();
+        // V fprintf(stderr, "\n\nOut of memory!  %u bytes requested.\n", size);
+	// abort(); 
+        // TODO what to do ?
     }
     return cp;
 }
 
 /*  UCASE  --  Force letters in string to upper case.  */
 
-static void ucase(c)
-  char *c;
+static void ucase(char *c)
 {
     char ch;
 
@@ -310,35 +295,6 @@ static void ucase(c)
     }
 }
 
-#ifdef TELLDUS
-static void rawcallback(const char *data, int controllerId, int callbackId, void *context)
-{
-	dictword *dw; 
-   V strcpy((char *)context, data);
-	dw = atl_lookup("rawevent");
-   atl_exec(dw);
-}
-#endif
-
-#ifdef WIRINGPI
-static void wipiISRcallback(const char *data, int controllerId, int callbackId, void *context)
-{
-	dictword *dw; 
-   V strcpy((char *)context, data);
-	dw = atl_lookup("wipiisr");
-   atl_exec(dw);
-}
-#endif
-
-#ifdef I2C
-	int i2cfile;
-#endif
-
-#ifdef WEBSOCKETS
-	noPollCtx *ctx; // = nopoll_ctx_new();
-	noPollConn * conn;
-#endif
-
 #ifdef TCP
     int sockfd;
     struct sockaddr_in serv_addr;
@@ -347,14 +303,13 @@ static void wipiISRcallback(const char *data, int controllerId, int callbackId, 
 
 /*  TOKEN  --  Scan a token and return its type.  */
 
-static int token(cp)
-  char **cp;
+static int token(const char ** cp)
 {
-    char *sp = *cp;
+    const char *sp = *cp;
 
     while (True) {
 	char *tp = tokbuf;
-	int tl = 0;
+	unsigned int tl = 0;
 	Boolean istring = False, rstring = False;
 
 	if (atl_comment) {
@@ -484,8 +439,7 @@ static int token(cp)
 	/* See if the token is a number. */
 
         if (isdigit(tokbuf[0]) || tokbuf[0] == '-') {
-	    char tc;
-	    char *tcp;
+	    //char tc;
 
 #ifdef OS2
 	    /* Compensate for error in OS/2 sscanf() library function */
@@ -500,6 +454,8 @@ static int token(cp)
             if (sscanf(tokbuf, "%li%c", &tokint, &tc) == 1)
 		return TokInt;
 #else
+            const char *tcp;
+            
     	    tokint = strtoul(tokbuf, &tcp, 0);
 	    if (*tcp == 0) {
 	    	return TokInt;
@@ -516,12 +472,10 @@ static int token(cp)
 
 /*  LOOKUP  --	Look up token in the dictionary.  */
 
-static dictword *lookup(tkname)
-  char *tkname;
+static dictword *lookup(const char *tkname)
 {
     dictword *dw = dict;
 
-    ucase(tkname);		      /* Force name to upper case */
     while (dw != NULL) {
 	if (!(dw->wname[0] & WORDHIDDEN) &&
 	     (strcmp(dw->wname + 1, tkname) == 0)) {
@@ -560,10 +514,7 @@ static dictword *lookup(tkname)
 		    of line character is stored in the string buffer.
 		    */
 
-Exported char *atl_fgetsp(s, n, stream)
-  char *s;
-  int n;
-  FILE *stream;
+Exported char *atl_fgetsp(char *s, int n, FILE *stream)
 {
 	int i = 0, ch;
 
@@ -597,7 +548,7 @@ Exported char *atl_fgetsp(s, n, stream)
 /*  ATL_MEMSTAT  --  Print memory usage summary.  */
 
 #ifdef MEMSTAT
-void atl_memstat()
+void atl_memstat(void)
 {
     static char fmt[] = "   %-12s %6ld    %6ld    %6ld       %3ld\n";
 
@@ -629,8 +580,7 @@ void atl_memstat()
 	       name and initial values for its attributes, returns
 	       the newly-allocated dictionary item. */
 
-static void enter(tkname)
-  char *tkname;
+static void enter(char *tkname)
 {
     /* Allocate name buffer */
     createword->wname = alloc(((unsigned int) strlen(tkname) + 2));
@@ -670,7 +620,7 @@ static Boolean kbquit()
 #define Compconst(x) Ho(1); Hstore = (stackitem) (x)
 #define Skipstring ip += *((char *) ip)
 
-prim P_plus()			      /* Add two numbers */
+prim P_plus(void)			      /* Add two numbers */
 {
     Sl(2);
 /* printf("PLUS %lx + %lx = %lx\n", S1, S0, (S1 + S0)); */
@@ -678,21 +628,21 @@ prim P_plus()			      /* Add two numbers */
     Pop;
 }
 
-prim P_minus()			      /* Subtract two numbers */
+prim P_minus(void)			      /* Subtract two numbers */
 {
     Sl(2);
     S1 -= S0;
     Pop;
 }
 
-prim P_times()			      /* Multiply two numbers */
+prim P_times(void)			      /* Multiply two numbers */
 {
     Sl(2);
     S1 *= S0;
     Pop;
 }
 
-prim P_div()			      /* Divide two numbers */
+prim P_div(void)			      /* Divide two numbers */
 {
     Sl(2);
 #ifndef NOMEMCHECK
@@ -705,7 +655,7 @@ prim P_div()			      /* Divide two numbers */
     Pop;
 }
 
-prim P_mod()			      /* Take remainder */
+prim P_mod(void)			      /* Take remainder */
 {
     Sl(2);
 #ifndef NOMEMCHECK
@@ -718,7 +668,7 @@ prim P_mod()			      /* Take remainder */
     Pop;
 }
 
-prim P_divmod() 		      /* Compute quotient and remainder */
+prim P_divmod(void) 		      /* Compute quotient and remainder */
 {
     stackitem quot;
 
@@ -734,75 +684,75 @@ prim P_divmod() 		      /* Compute quotient and remainder */
     S0 = quot;
 }
 
-prim P_min()			      /* Take minimum of stack top */
+prim P_min(void)			      /* Take minimum of stack top */
 {
     Sl(2);
     S1 = min(S1, S0);
     Pop;
 }
 
-prim P_max()			      /* Take maximum of stack top */
+prim P_max(void)			      /* Take maximum of stack top */
 {
     Sl(2);
     S1 = max(S1, S0);
     Pop;
 }
 
-prim P_neg()			      /* Negate top of stack */
+prim P_neg(void)			      /* Negate top of stack */
 {
     Sl(1);
     S0 = - S0;
 }
 
-prim P_abs()			      /* Take absolute value of top of stack */
+prim P_abs(void)			      /* Take absolute value of top of stack */
 {
     Sl(1);
     S0 = abs(S0);
 }
 
-prim P_equal()			      /* Test equality */
+prim P_equal(void)			      /* Test equality */
 {
     Sl(2);
     S1 = (S1 == S0) ? Truth : Falsity;
     Pop;
 }
 
-prim P_unequal()		      /* Test inequality */
+prim P_unequal(void)		      /* Test inequality */
 {
     Sl(2);
     S1 = (S1 != S0) ? Truth : Falsity;
     Pop;
 }
 
-prim P_gtr()			      /* Test greater than */
+prim P_gtr(void)			      /* Test greater than */
 {
     Sl(2);
     S1 = (S1 > S0) ? Truth : Falsity;
     Pop;
 }
 
-prim P_lss()			      /* Test less than */
+prim P_lss(void)			      /* Test less than */
 {
     Sl(2);
     S1 = (S1 < S0) ? Truth : Falsity;
     Pop;
 }
 
-prim P_geq()			      /* Test greater than or equal */
+prim P_geq(void)			      /* Test greater than or equal */
 {
     Sl(2);
     S1 = (S1 >= S0) ? Truth : Falsity;
     Pop;
 }
 
-prim P_leq()			      /* Test less than or equal */
+prim P_leq(void)			      /* Test less than or equal */
 {
     Sl(2);
     S1 = (S1 <= S0) ? Truth : Falsity;
     Pop;
 }
 
-prim P_and()			      /* Logical and */
+prim P_and(void)			      /* Logical and */
 {
     Sl(2);
 /* printf("AND %lx & %lx = %lx\n", S1, S0, (S1 & S0)); */
@@ -810,27 +760,27 @@ prim P_and()			      /* Logical and */
     Pop;
 }
 
-prim P_or()			      /* Logical or */
+prim P_or(void)			      /* Logical or */
 {
     Sl(2);
     S1 |= S0;
     Pop;
 }
 
-prim P_xor()			      /* Logical xor */
+prim P_xor(void)			      /* Logical xor */
 {
     Sl(2);
     S1 ^= S0;
     Pop;
 }
 
-prim P_not()			      /* Logical negation */
+prim P_not(void)			      /* Logical negation */
 {
     Sl(1);
     S0 = ~S0;
 }
 
-prim P_shift()			      /* Shift:  value nbits -- value */
+prim P_shift(void)			      /* Shift:  value nbits -- value */
 {
     Sl(1);
     S1 = (S0 < 0) ? (((unsigned long) S1) >> (-S0)) :
@@ -840,37 +790,37 @@ prim P_shift()			      /* Shift:  value nbits -- value */
 
 #ifdef SHORTCUTA
 
-prim P_1plus()			      /* Add one */
+prim P_1plus(void)			      /* Add one */
 {
     Sl(1);
     S0++;
 }
 
-prim P_2plus()			      /* Add two */
+prim P_2plus(void)			      /* Add two */
 {
     Sl(1);
     S0 += 2;
 }
 
-prim P_1minus() 		      /* Subtract one */
+prim P_1minus(void) 		      /* Subtract one */
 {
     Sl(1);
     S0--;
 }
 
-prim P_2minus() 		      /* Subtract two */
+prim P_2minus(void) 		      /* Subtract two */
 {
     Sl(1);
     S0 -= 2;
 }
 
-prim P_2times() 		      /* Multiply by two */
+prim P_2times(void) 		      /* Multiply by two */
 {
     Sl(1);
     S0 *= 2;
 }
 
-prim P_2div()			      /* Divide by two */
+prim P_2div(void)			      /* Divide by two */
 {
     Sl(1);
     S0 /= 2;
@@ -880,25 +830,25 @@ prim P_2div()			      /* Divide by two */
 
 #ifdef SHORTCUTC
 
-prim P_0equal() 		      /* Equal to zero ? */
+prim P_0equal(void) 		      /* Equal to zero ? */
 {
     Sl(1);
     S0 = (S0 == 0) ? Truth : Falsity;
 }
 
-prim P_0notequal()		      /* Not equal to zero ? */
+prim P_0notequal(void)		      /* Not equal to zero ? */
 {
     Sl(1);
     S0 = (S0 != 0) ? Truth : Falsity;
 }
 
-prim P_0gtr()			      /* Greater than zero ? */
+prim P_0gtr(void)			      /* Greater than zero ? */
 {
     Sl(1);
     S0 = (S0 > 0) ? Truth : Falsity;
 }
 
-prim P_0lss()			      /* Less than zero ? */
+prim P_0lss(void)			      /* Less than zero ? */
 {
     Sl(1);
     S0 = (S0 < 0) ? Truth : Falsity;
@@ -908,36 +858,48 @@ prim P_0lss()			      /* Less than zero ? */
 
 /*  Storage allocation (heap) primitives  */
 
-prim P_here()			      /* Push current heap address */
-{
-    So(1);
-    Push = (stackitem) hptr;
+static stackitem * int_to_ptr(int32 x) {
+    return ((stackitem*)NULL)+x;
 }
 
-prim P_bang()			      /* Store value into address */
+static int32 ptr_to_int(const void *x) {
+    uint16 bytes[2];
+ 
+    memcpy(bytes, x, 4);
+    // xap is big endian
+    return( ((int32) bytes[1])<<16) + bytes[0];
+}
+
+prim P_here(void)			      /* Push current heap address */
+{
+    So(1);
+    Push = ptr_to_int(hptr);
+}
+
+prim P_bang(void)			      /* Store value into address */
 {
     Sl(2);
-    Hpc(S0);
-    *((stackitem *) S0) = S1;
+    Hpc(ptr_to_int(S0));
+    *(int_to_ptr(S0)) = S1;
     Pop2;
 }
 
-prim P_at()			      /* Fetch value from address */
+prim P_at(void)			      /* Fetch value from address */
 {
     Sl(1);
     Hpc(S0);
-    S0 = *((stackitem *) S0);
+    S0 = *(int_to_ptr(S0));
 }
 
-prim P_plusbang()		      /* Add value at specified address */
+prim P_plusbang(void)		      /* Add value at specified address */
 {
     Sl(2);
     Hpc(S0);
-    *((stackitem *) S0) += S1;
+    *(int_to_ptr(S0)) += S1;
     Pop2;
 }
 
-prim P_allot()			      /* Allocate heap bytes */
+prim P_allot(void)			      /* Allocate heap bytes */
 {
     stackitem n;
 
@@ -948,7 +910,7 @@ prim P_allot()			      /* Allocate heap bytes */
     hptr += n;
 }
 
-prim P_comma()			      /* Store one item on heap */
+prim P_comma(void)			      /* Store one item on heap */
 {
     Sl(1);
     Ho(1);
@@ -956,22 +918,22 @@ prim P_comma()			      /* Store one item on heap */
     Pop;
 }
 
-prim P_cbang()			      /* Store byte value into address */
+prim P_cbang(void)			      /* Store byte value into address */
 {
     Sl(2);
     Hpc(S0);
-    *((unsigned char *) S0) = S1;
+    *(int_to_ptr(S0)) = S1;
     Pop2;
 }
 
-prim P_cat()			      /* Fetch byte value from address */
+prim P_cat(void)			      /* Fetch byte value from address */
 {
     Sl(1);
     Hpc(S0);
-    S0 = *((unsigned char *) S0);
+    S0 = *(int_to_ptr(S0));
 }
 
-prim P_ccomma() 		      /* Store one byte on heap */
+prim P_ccomma(void) 		      /* Store one byte on heap */
 {
     unsigned char *chp;
 
@@ -983,9 +945,9 @@ prim P_ccomma() 		      /* Store one byte on heap */
     Pop;
 }
 
-prim P_cequal() 		      /* Align heap pointer after storing */
+prim P_cequal(void) 		      /* Align heap pointer after storing */
 {				      /* a series of bytes. */
-    stackitem n = (((stackitem) hptr) - ((stackitem) heap)) %
+    stackitem n = (ptr_to_int(hptr)) - (ptr_to_int(heap)) %
 			(sizeof(stackitem));
 
     if (n != 0) {
@@ -998,13 +960,13 @@ prim P_cequal() 		      /* Align heap pointer after storing */
 
 /*  Variable and constant primitives  */
 
-prim P_var()			      /* Push body address of current word */
+prim P_var(void)			      /* Push body address of current word */
 {
     So(1);
-    Push = (stackitem) (((stackitem *) curword) + Dictwordl);
+    Push = ptr_to_int(curword) + Dictwordl;
 }
 
-Exported void P_create()	      /* Create new word */
+Exported void P_create(void)	      /* Create new word */
 {
     defpend = True;		      /* Set definition pending */
     Ho(Dictwordl);
@@ -1014,25 +976,25 @@ Exported void P_create()	      /* Create new word */
     hptr += Dictwordl;		      /* Allocate heap space for word */
 }
 
-prim P_forget() 		      /* Forget word */
+prim P_forget(void) 		      /* Forget word */
 {
     forgetpend = True;		      /* Mark forget pending */
 }
 
-prim P_variable()		      /* Declare variable */
+prim P_variable(void)		      /* Declare variable */
 {
     P_create(); 		      /* Create dictionary item */
     Ho(1);
     Hstore = 0; 		      /* Initial value = 0 */
 }
 
-prim P_con()			      /* Push value in body */
+prim P_con(void)			      /* Push value in body */
 {
     So(1);
     Push = *(((stackitem *) curword) + Dictwordl);
 }
 
-prim P_constant()		      /* Declare constant */
+prim P_constant(void)		      /* Declare constant */
 {
     Sl(1);
     P_create(); 		      /* Create dictionary item */
@@ -1045,7 +1007,7 @@ prim P_constant()		      /* Declare constant */
 /*  Array primitives  */
 
 #ifdef ARRAY
-prim P_arraysub()		      /* Array subscript calculation */
+prim P_arraysub(void)		      /* Array subscript calculation */
 {				      /* sub1 sub2 ... subn -- addr */
     int i, offset, esize, nsubs;
     stackitem *array;
@@ -1079,7 +1041,7 @@ prim P_arraysub()		      /* Array subscript calculation */
 	    Dictwordl + 2 + nsubs)) + (esize * offset));
 }
 
-prim P_array()			      /* Declare array */
+prim P_array(void)			      /* Declare array */
 {				      /* sub1 sub2 ... subn n esize -- array */
     int i, nsubs, asize = 1;
     stackitem *isp;
@@ -1127,7 +1089,7 @@ prim P_array()			      /* Declare array */
 
 #ifdef STRING
 
-prim P_strlit() 		      /* Push address of string literal */
+prim P_strlit(void) 		      /* Push address of string literal */
 {
     So(1);
     Push = (stackitem) (((char *) ip) + 1);
@@ -1139,7 +1101,7 @@ prim P_strlit() 		      /* Push address of string literal */
     Skipstring; 		      /* Advance IP past it */
 }
 
-prim P_string() 		      /* Create string buffer */
+prim P_string(void) 		      /* Create string buffer */
 {
     Sl(1);
     Ho((S0 + 1 + sizeof(stackitem)) / sizeof(stackitem));
@@ -1149,7 +1111,7 @@ prim P_string() 		      /* Create string buffer */
     Pop;
 }
 
-prim P_strcpy() 		      /* Copy string to address on stack */
+prim P_strcpy(void) 		      /* Copy string to address on stack */
 {
     Sl(2);
     Hpc(S0);
@@ -1158,7 +1120,7 @@ prim P_strcpy() 		      /* Copy string to address on stack */
     Pop2;
 }
 
-prim P_strcat() 		      /* Append string to address on stack */
+prim P_strcat(void) 		      /* Append string to address on stack */
 {
     Sl(2);
     Hpc(S0);
@@ -1167,14 +1129,14 @@ prim P_strcat() 		      /* Append string to address on stack */
     Pop2;
 }
 
-prim P_strlen() 		      /* Take length of string on stack top */
+prim P_strlen(void) 		      /* Take length of string on stack top */
 {
     Sl(1);
     Hpc(S0);
     S0 = strlen((char *) S0);
 }
 
-prim P_strcmp() 		      /* Compare top two strings on stack */
+prim P_strcmp(void) 		      /* Compare top two strings on stack */
 {
     int i;
 
@@ -1186,7 +1148,7 @@ prim P_strcmp() 		      /* Compare top two strings on stack */
     Pop;
 }
 
-prim P_strchar()		      /* Find character in string */
+prim P_strchar(void)		      /* Find character in string */
 {
     Sl(2);
     Hpc(S0);
@@ -1195,7 +1157,7 @@ prim P_strchar()		      /* Find character in string */
     Pop;
 }
 
-prim P_substr() 		      /* Extract and store substring */
+prim P_substr(void) 		      /* Extract and store substring */
 {				      /* source start length/-1 dest -- */
     long sl, sn;
     char *ss, *sp, *se, *ds;
@@ -1215,7 +1177,7 @@ prim P_substr() 		      /* Extract and store substring */
     Npop(4);
 }
 
-prim P_strform()		      /* Format integer using sprintf() */
+prim P_strform(void)		      /* Format integer using sprintf() */
 {                                     /* value "%ld" str -- */
     Sl(2);
     Hpc(S0);
@@ -1225,7 +1187,7 @@ prim P_strform()		      /* Format integer using sprintf() */
 }
 
 #ifdef REAL
-prim P_fstrform()		      /* Format real using sprintf() */
+prim P_fstrform(void)		      /* Format real using sprintf() */
 {                                     /* rvalue "%6.2f" str -- */
     Sl(4);
     Hpc(S0);
@@ -1235,7 +1197,7 @@ prim P_fstrform()		      /* Format real using sprintf() */
 }
 #endif /* REAL */
 
-prim P_strint() 		      /* String to integer */
+prim P_strint(void) 		      /* String to integer */
 {				      /* str -- endptr value */
     stackitem is;
     char *eptr;
@@ -1249,7 +1211,7 @@ prim P_strint() 		      /* String to integer */
 }
 
 #ifdef REAL
-prim P_strreal()		      /* String to real */
+prim P_strreal(void)		      /* String to real */
 {				      /* str -- endptr value */
     int i;
     union {
@@ -1274,7 +1236,7 @@ prim P_strreal()		      /* String to real */
 
 #ifdef REAL
 
-prim P_flit()			      /* Push floating point literal */
+prim P_flit(void)			      /* Push floating point literal */
 {
     int i;
 
@@ -1292,28 +1254,28 @@ prim P_flit()			      /* Push floating point literal */
     }
 }
 
-prim P_fplus()			      /* Add floating point numbers */
+prim P_fplus(void)			      /* Add floating point numbers */
 {
     Sl(2 * Realsize);
     SREAL1(REAL1 + REAL0);
     Realpop;
 }
 
-prim P_fminus() 		      /* Subtract floating point numbers */
+prim P_fminus(void) 		      /* Subtract floating point numbers */
 {
     Sl(2 * Realsize);
     SREAL1(REAL1 - REAL0);
     Realpop;
 }
 
-prim P_ftimes() 		      /* Multiply floating point numbers */
+prim P_ftimes(void) 		      /* Multiply floating point numbers */
 {
     Sl(2 * Realsize);
     SREAL1(REAL1 * REAL0);
     Realpop;
 }
 
-prim P_fdiv()			      /* Divide floating point numbers */
+prim P_fdiv(void)			      /* Divide floating point numbers */
 {
     Sl(2 * Realsize);
 #ifndef NOMEMCHECK
@@ -1326,33 +1288,33 @@ prim P_fdiv()			      /* Divide floating point numbers */
     Realpop;
 }
 
-prim P_fmin()			      /* Minimum of top two floats */
+prim P_fmin(void)			      /* Minimum of top two floats */
 {
     Sl(2 * Realsize);
     SREAL1(min(REAL1, REAL0));
     Realpop;
 }
 
-prim P_fmax()			      /* Maximum of top two floats */
+prim P_fmax(void)			      /* Maximum of top two floats */
 {
     Sl(2 * Realsize);
     SREAL1(max(REAL1, REAL0));
     Realpop;
 }
 
-prim P_fneg()			      /* Negate top of stack */
+prim P_fneg(void)			      /* Negate top of stack */
 {
     Sl(Realsize);
     SREAL0(- REAL0);
 }
 
-prim P_fabs()			      /* Absolute value of top of stack */
+prim P_fabs(void)			      /* Absolute value of top of stack */
 {
     Sl(Realsize);
     SREAL0(abs(REAL0));
 }
 
-prim P_fequal() 		      /* Test equality of top of stack */
+prim P_fequal(void) 		      /* Test equality of top of stack */
 {
     stackitem t;
 
@@ -1362,7 +1324,7 @@ prim P_fequal() 		      /* Test equality of top of stack */
     Push = t;
 }
 
-prim P_funequal()		      /* Test inequality of top of stack */
+prim P_funequal(void)		      /* Test inequality of top of stack */
 {
     stackitem t;
 
@@ -1372,7 +1334,7 @@ prim P_funequal()		      /* Test inequality of top of stack */
     Push = t;
 }
 
-prim P_fgtr()			      /* Test greater than */
+prim P_fgtr(void)			      /* Test greater than */
 {
     stackitem t;
 
@@ -1382,7 +1344,7 @@ prim P_fgtr()			      /* Test greater than */
     Push = t;
 }
 
-prim P_flss()			      /* Test less than */
+prim P_flss(void)			      /* Test less than */
 {
     stackitem t;
 
@@ -1392,7 +1354,7 @@ prim P_flss()			      /* Test less than */
     Push = t;
 }
 
-prim P_fgeq()			      /* Test greater than or equal */
+prim P_fgeq(void)			      /* Test greater than or equal */
 {
     stackitem t;
 
@@ -1402,7 +1364,7 @@ prim P_fgeq()			      /* Test greater than or equal */
     Push = t;
 }
 
-prim P_fleq()			      /* Test less than or equal */
+prim P_fleq(void)			      /* Test less than or equal */
 {
     stackitem t;
 
@@ -1412,14 +1374,14 @@ prim P_fleq()			      /* Test less than or equal */
     Push = t;
 }
 
-prim P_fdot()			      /* Print floating point top of stack */
+prim P_fdot(void)			      /* Print floating point top of stack */
 {
     Sl(Realsize);
-    V printf("%g ", REAL0);
+    // V printf("%g ", REAL0);
     Realpop;
 }
 
-prim P_float()			      /* Convert integer to floating */
+prim P_float(void)			      /* Convert integer to floating */
 {
     atl_real r;
 
@@ -1430,7 +1392,7 @@ prim P_float()			      /* Convert integer to floating */
     SREAL0(r);
 }
 
-prim P_fix()			      /* Convert floating to integer */
+prim P_fix(void)			      /* Convert floating to integer */
 {
     stackitem i;
 
@@ -1444,61 +1406,61 @@ prim P_fix()			      /* Convert floating to integer */
 
 #define Mathfunc(x) Sl(Realsize); SREAL0(x(REAL0))
 
-prim P_acos()			      /* Arc cosine */
+prim P_acos(void)			      /* Arc cosine */
 {
     Mathfunc(acos);
 }
 
-prim P_asin()			      /* Arc sine */
+prim P_asin(void)			      /* Arc sine */
 {
     Mathfunc(asin);
 }
 
-prim P_atan()			      /* Arc tangent */
+prim P_atan(void)			      /* Arc tangent */
 {
     Mathfunc(atan);
 }
 
-prim P_atan2()			      /* Arc tangent:  y x -- atan */
+prim P_atan2(void)			      /* Arc tangent:  y x -- atan */
 {
     Sl(2 * Realsize);
     SREAL1(atan2(REAL1, REAL0));
     Realpop;
 }
 
-prim P_cos()			      /* Cosine */
+prim P_cos(void)			      /* Cosine */
 {
     Mathfunc(cos);
 }
 
-prim P_exp()			      /* E ^ x */
+prim P_exp(void)			      /* E ^ x */
 {
     Mathfunc(exp);
 }
 
-prim P_log()			      /* Natural log */
+prim P_log(void)			      /* Natural log */
 {
     Mathfunc(log);
 }
 
-prim P_pow()			      /* X ^ Y */
+prim P_pow(void)			      /* X ^ Y */
 {
     Sl(2 * Realsize);
     SREAL1(pow(REAL1, REAL0));
     Realpop;
 }
 
-prim P_sin()			      /* Sine */
+prim P_sin(void)			      /* Sine */
 {
     Mathfunc(sin);
 }
 
-prim P_sqrt()			      /* Square root */
+prim P_sqrt(void)			      /* Square root */
 {
     Mathfunc(sqrt);
 }
 
-prim P_tan()			      /* Tangent */
+prim P_tan(void)			      /* Tangent */
 {
     Mathfunc(tan);
 }
@@ -1510,28 +1472,28 @@ prim P_tan()			      /* Tangent */
 
 #ifdef CONIO
 
-prim P_dot()			      /* Print top of stack, pop it */
+prim P_dot(void)			      /* Print top of stack, pop it */
 {
     Sl(1);
     V printf(base == 16 ? "%lX" : "%ld ", S0);
     Pop;
 }
 
-prim P_question()		      /* Print value at address */
+prim P_question(void)		      /* Print value at address */
 {
     Sl(1);
     Hpc(S0);
-    V printf(base == 16 ? "%lX" : "%ld ", *((stackitem *) S0));
+    V printf(base == 16 ? "%lX" : "%ld ", *(int_to_ptr(S0)));
     Pop;
 }
 
-prim P_cr()			      /* Carriage return */
+prim P_cr(void)			      /* Carriage return */
 {
     V printf("\n");
     fflush(stdout);
 }
 
-prim P_dots()			      /* Print entire contents of stack */
+prim P_dots(void)			      /* Print entire contents of stack */
 {
     stackitem *tsp;
 
@@ -1545,14 +1507,14 @@ prim P_dots()			      /* Print entire contents of stack */
     }
 }
 
-prim P_dotquote()		      /* Print literal string that follows */
+prim P_dotquote(void)		      /* Print literal string that follows */
 {
     Compiling;
     stringlit = True;		      /* Set string literal expected */
     Compconst(s_dotparen);	      /* Compile .( word */
 }
 
-prim P_dotparen()		      /* Print literal string that follows */
+prim P_dotparen(void)		      /* Print literal string that follows */
 {
     if (ip == NULL) {		      /* If interpreting */
 	stringlit = True;	      /* Set to print next string constant */
@@ -1563,7 +1525,7 @@ prim P_dotparen()		      /* Print literal string that follows */
     }
 }
 
-prim P_type()			      /* Print string pointed to by stack */
+prim P_type(void)			      /* Print string pointed to by stack */
 {
     Sl(1);
     Hpc(S0);
@@ -1571,7 +1533,7 @@ prim P_type()			      /* Print string pointed to by stack */
     Pop;
 }
 
-prim P_words()			      /* List words */
+prim P_words(void)			      /* List words */
 {
 #ifndef Keyhit
     int key = 0;
@@ -1599,7 +1561,7 @@ prim P_words()			      /* List words */
 
 #ifdef FILEIO
 
-prim P_file()			      /* Declare file */
+prim P_file(void)			      /* Declare file */
 {
     Ho(2);
     P_create(); 		      /* Create variable */
@@ -1607,7 +1569,7 @@ prim P_file()			      /* Declare file */
     Hstore = 0; 		      /* Mark file not open */
 }
 
-prim P_fopen()			      /* Open file: fname fmodes fd -- flag */
+prim P_fopen(void)			      /* Open file: fname fmodes fd -- flag */
 {
     FILE *fd;
     stackitem stat;
@@ -1627,7 +1589,7 @@ prim P_fopen()			      /* Open file: fname fmodes fd -- flag */
     S0 = stat;
 }
 
-prim P_fclose() 		      /* Close file: fd -- */
+prim P_fclose(void) 		      /* Close file: fd -- */
 {
     Sl(1);
     Hpc(S0);
@@ -1638,14 +1600,14 @@ prim P_fclose() 		      /* Close file: fd -- */
     Pop;
 }
 
-prim P_fdelete()		      /* Delete file: fname -- flag */
+prim P_fdelete(void)		      /* Delete file: fname -- flag */
 {
     Sl(1);
     Hpc(S0);
     S0 = (unlink((char *) S0) == 0) ? Truth : Falsity;
 }
 
-prim P_fgetline()		      /* Get line: fd string -- flag */
+prim P_fgetline(void)		      /* Get line: fd string -- flag */
 {
     Sl(2);
     Hpc(S0);
@@ -1659,7 +1621,7 @@ prim P_fgetline()		      /* Get line: fd string -- flag */
     Pop;
 }
 
-prim P_fputline()		      /* Put line: string fd -- flag */
+prim P_fputline(void)		      /* Put line: string fd -- flag */
 {
     Sl(2);
     Hpc(S1);
@@ -1673,7 +1635,7 @@ prim P_fputline()		      /* Put line: string fd -- flag */
     Pop;
 }
 
-prim P_fread()			      /* File read: fd len buf -- length */
+prim P_fread(void)			      /* File read: fd len buf -- length */
 {
     Sl(3);
     Hpc(S0);
@@ -1683,7 +1645,7 @@ prim P_fread()			      /* File read: fd len buf -- length */
     Pop2;
 }
 
-prim P_fwrite() 		      /* File write: len buf fd -- length */
+prim P_fwrite(void) 		      /* File write: len buf fd -- length */
 {
     Sl(3);
     Hpc(S1);
@@ -1693,7 +1655,7 @@ prim P_fwrite() 		      /* File write: len buf fd -- length */
     Pop2;
 }
 
-prim P_fgetc()			      /* File get character: fd -- char */
+prim P_fgetc(void)			      /* File get character: fd -- char */
 {
     Sl(1);
     Isfile(S0);
@@ -1701,7 +1663,7 @@ prim P_fgetc()			      /* File get character: fd -- char */
     S0 = getc(FileD(S0));	      /* Returns -1 if EOF hit */
 }
 
-prim P_fputc()			      /* File put character: char fd -- stat */
+prim P_fputc(void)			      /* File put character: char fd -- stat */
 {
     Sl(2);
     Isfile(S0);
@@ -1710,7 +1672,7 @@ prim P_fputc()			      /* File put character: char fd -- stat */
     Pop;
 }
 
-prim P_ftell()			      /* Return file position:	fd -- pos */
+prim P_ftell(void)			      /* Return file position:	fd -- pos */
 {
     Sl(1);
     Isfile(S0);
@@ -1718,7 +1680,7 @@ prim P_ftell()			      /* Return file position:	fd -- pos */
     S0 = (stackitem) ftell(FileD(S0));
 }
 
-prim P_fseek()			      /* Seek file:  offset base fd -- */
+prim P_fseek(void)			      /* Seek file:  offset base fd -- */
 {
     Sl(3);
     Isfile(S0);
@@ -1727,7 +1689,7 @@ prim P_fseek()			      /* Seek file:  offset base fd -- */
     Npop(3);
 }
 
-prim P_fload()			      /* Load source file:  fd -- evalstat */
+prim P_fload(void)			      /* Load source file:  fd -- evalstat */
 {
     int estat;
     FILE *fd;
@@ -1745,13 +1707,13 @@ prim P_fload()			      /* Load source file:  fd -- evalstat */
 
 #ifdef EVALUATE
 
-prim P_evaluate()
+prim P_evaluate(void)
 {				      /* string -- status */
     int es = ATL_SNORM;
     atl_statemark mk;
     atl_int scomm = atl_comment;      /* Stack comment pending state */
     dictword **sip = ip;	      /* Stack instruction pointer */
-    char *sinstr = instream;	      /* Stack input stream */
+    const char *sinstr = instream;	      /* Stack input stream */
     char *estring;
 
     Sl(1);
@@ -1780,7 +1742,7 @@ prim P_evaluate()
 
 /*  Stack mechanics  */
 
-prim P_depth()			      /* Push stack depth */
+prim P_depth(void)			      /* Push stack depth */
 {
     stackitem s = stk - stack;
 
@@ -1788,12 +1750,12 @@ prim P_depth()			      /* Push stack depth */
     Push = s;
 }
 
-prim P_clear()			      /* Clear stack */
+prim P_clear(void)			      /* Clear stack */
 {
     stk = stack;
 }
 
-prim P_dup()			      /* Duplicate top of stack */
+prim P_dup(void)			      /* Duplicate top of stack */
 {
     stackitem s;
 
@@ -1803,13 +1765,13 @@ prim P_dup()			      /* Duplicate top of stack */
     Push = s;
 }
 
-prim P_drop()			      /* Drop top item on stack */
+prim P_drop(void)			      /* Drop top item on stack */
 {
     Sl(1);
     Pop;
 }
 
-prim P_swap()			      /* Exchange two top items on stack */
+prim P_swap(void)			      /* Exchange two top items on stack */
 {
     stackitem t;
 
@@ -1819,7 +1781,7 @@ prim P_swap()			      /* Exchange two top items on stack */
     S0 = t;
 }
 
-prim P_over()			      /* Push copy of next to top of stack */
+prim P_over(void)			      /* Push copy of next to top of stack */
 {
     stackitem s;
 
@@ -1829,13 +1791,13 @@ prim P_over()			      /* Push copy of next to top of stack */
     Push = s;
 }
 
-prim P_pick()			      /* Copy indexed item from stack */
+prim P_pick(void)			      /* Copy indexed item from stack */
 {
     Sl(2);
     S0 = stk[-(2 + S0)];
 }
 
-prim P_rot()			      /* Rotate 3 top stack items */
+prim P_rot(void)			      /* Rotate 3 top stack items */
 {
     stackitem t;
 
@@ -1846,7 +1808,7 @@ prim P_rot()			      /* Rotate 3 top stack items */
     S1 = t;
 }
 
-prim P_minusrot()		      /* Reverse rotate 3 top stack items */
+prim P_minusrot(void)		      /* Reverse rotate 3 top stack items */
 {
     stackitem t;
 
@@ -1857,7 +1819,7 @@ prim P_minusrot()		      /* Reverse rotate 3 top stack items */
     S2 = t;
 }
 
-prim P_roll()			      /* Rotate N top stack items */
+prim P_roll(void)			      /* Rotate N top stack items */
 {
     stackitem i, j, t;
 
@@ -1871,7 +1833,7 @@ prim P_roll()			      /* Rotate N top stack items */
     S0 = t;
 }
 
-prim P_tor()			      /* Transfer stack top to return stack */
+prim P_tor(void)			      /* Transfer stack top to return stack */
 {
     Rso(1);
     Sl(1);
@@ -1879,7 +1841,7 @@ prim P_tor()			      /* Transfer stack top to return stack */
     Pop;
 }
 
-prim P_rfrom()			      /* Transfer return stack top to stack */
+prim P_rfrom(void)			      /* Transfer return stack top to stack */
 {
     Rsl(1);
     So(1);
@@ -1887,7 +1849,7 @@ prim P_rfrom()			      /* Transfer return stack top to stack */
     Rpop;
 }
 
-prim P_rfetch() 		      /* Fetch top item from return stack */
+prim P_rfetch(void) 		      /* Fetch top item from return stack */
 {
     Rsl(1);
     So(1);
@@ -1905,7 +1867,7 @@ prim P_rfetch() 		      /* Fetch top item from return stack */
 
 #ifdef DOUBLE
 
-prim P_2dup()			      /* Duplicate stack top doubleword */
+prim P_2dup(void)			      /* Duplicate stack top doubleword */
 {
     stackitem s;
 
@@ -1917,13 +1879,13 @@ prim P_2dup()			      /* Duplicate stack top doubleword */
     Push = s;
 }
 
-prim P_2drop()			      /* Drop top two items from stack */
+prim P_2drop(void)			      /* Drop top two items from stack */
 {
     Sl(2);
     stk -= 2;
 }
 
-prim P_2swap()			      /* Swap top two double items on stack */
+prim P_2swap(void)			      /* Swap top two double items on stack */
 {
     stackitem t;
 
@@ -1936,7 +1898,7 @@ prim P_2swap()			      /* Swap top two double items on stack */
     S1 = t;
 }
 
-prim P_2over()			      /* Extract second pair from stack */
+prim P_2over(void)			      /* Extract second pair from stack */
 {
     stackitem s;
 
@@ -1948,7 +1910,7 @@ prim P_2over()			      /* Extract second pair from stack */
     Push = s;
 }
 
-prim P_2rot()			      /* Move third pair to top of stack */
+prim P_2rot(void)			      /* Move third pair to top of stack */
 {
     stackitem t1, t2;
 
@@ -1963,7 +1925,7 @@ prim P_2rot()			      /* Move third pair to top of stack */
     S0 = t1;
 }
 
-prim P_2variable()		      /* Declare double variable */
+prim P_2variable(void)		      /* Declare double variable */
 {
     P_create(); 		      /* Create dictionary item */
     Ho(2);
@@ -1971,14 +1933,14 @@ prim P_2variable()		      /* Declare double variable */
     Hstore = 0; 		      /* ...in both words */
 }
 
-prim P_2con()			      /* Push double value in body */
+prim P_2con(void)			      /* Push double value in body */
 {
     So(2);
     Push = *(((stackitem *) curword) + Dictwordl);
     Push = *(((stackitem *) curword) + Dictwordl + 1);
 }
 
-prim P_2constant()		      /* Declare double word constant */
+prim P_2constant(void)		      /* Declare double word constant */
 {
     Sl(1);
     P_create(); 		      /* Create dictionary item */
@@ -1989,7 +1951,7 @@ prim P_2constant()		      /* Declare double word constant */
     Pop2;
 }
 
-prim P_2bang()			      /* Store double value into address */
+prim P_2bang(void)			      /* Store double value into address */
 {
     stackitem *sp;
 
@@ -2001,7 +1963,7 @@ prim P_2bang()			      /* Store double value into address */
     Npop(3);
 }
 
-prim P_2at()			      /* Fetch double value from address */
+prim P_2at(void)			      /* Fetch double value from address */
 {
     stackitem *sp;
 
@@ -2016,7 +1978,7 @@ prim P_2at()			      /* Fetch double value from address */
 
 /*  Data transfer primitives  */
 
-prim P_dolit()			      /* Push instruction stream literal */
+prim P_dolit(void)			      /* Push instruction stream literal */
 {
     So(1);
 #ifdef TRACE
@@ -2030,7 +1992,7 @@ prim P_dolit()			      /* Push instruction stream literal */
 
 /*  Control flow primitives  */
 
-prim P_nest()			      /* Invoke compiled word */
+prim P_nest(void)			      /* Invoke compiled word */
 {
     Rso(1);
 #ifdef WALKBACK
@@ -2040,7 +2002,7 @@ prim P_nest()			      /* Invoke compiled word */
     ip = (((dictword **) curword) + Dictwordl);
 }
 
-prim P_exit()			      /* Return to top of return stack */
+prim P_exit(void)			      /* Return to top of return stack */
 {
     Rsl(1);
 #ifdef WALKBACK
@@ -2050,12 +2012,12 @@ prim P_exit()			      /* Return to top of return stack */
     Rpop;
 }
 
-prim P_branch() 		      /* Jump to in-line address */
+prim P_branch(void) 		      /* Jump to in-line address */
 {
     ip += (stackitem) *ip;	      /* Jump addresses are IP-relative */
 }
 
-prim P_qbranch()		      /* Conditional branch to in-line addr */
+prim P_qbranch(void)		      /* Conditional branch to in-line addr */
 {
     Sl(1);
     if (S0 == 0)		      /* If flag is false */
@@ -2065,7 +2027,7 @@ prim P_qbranch()		      /* Conditional branch to in-line addr */
     Pop;
 }
 
-prim P_if()			      /* Compile IF word */
+prim P_if(void)			      /* Compile IF word */
 {
     Compiling;
     Compconst(s_qbranch);	      /* Compile question branch */
@@ -2074,7 +2036,7 @@ prim P_if()			      /* Compile IF word */
     Compconst(0);		      /* Compile place-holder address cell */
 }
 
-prim P_else()			      /* Compile ELSE word */
+prim P_else(void)			      /* Compile ELSE word */
 {
     stackitem *bp;
 
@@ -2088,7 +2050,7 @@ prim P_else()			      /* Compile ELSE word */
     S0 = (stackitem) (hptr - 1);      /* Update backpatch for THEN */
 }
 
-prim P_then()			      /* Compile THEN word */
+prim P_then(void)			      /* Compile THEN word */
 {
     stackitem *bp;
 
@@ -2100,7 +2062,7 @@ prim P_then()			      /* Compile THEN word */
     Pop;
 }
 
-prim P_qdup()			      /* Duplicate if nonzero */
+prim P_qdup(void)			      /* Duplicate if nonzero */
 {
     Sl(1);
     if (S0 != 0) {
@@ -2110,14 +2072,14 @@ prim P_qdup()			      /* Duplicate if nonzero */
     }
 }
 
-prim P_begin()			      /* Compile BEGIN */
+prim P_begin(void)			      /* Compile BEGIN */
 {
     Compiling;
     So(1);
     Push = (stackitem) hptr;	      /* Save jump back address on stack */
 }
 
-prim P_until()			      /* Compile UNTIL */
+prim P_until(void)			      /* Compile UNTIL */
 {
     stackitem off;
     stackitem *bp;
@@ -2132,7 +2094,7 @@ prim P_until()			      /* Compile UNTIL */
     Pop;
 }
 
-prim P_again()			      /* Compile AGAIN */
+prim P_again(void)			      /* Compile AGAIN */
 {
     stackitem off;
     stackitem *bp;
@@ -2146,7 +2108,7 @@ prim P_again()			      /* Compile AGAIN */
     Pop;
 }
 
-prim P_while()			      /* Compile WHILE */
+prim P_while(void)			      /* Compile WHILE */
 {
     Compiling;
     So(1);
@@ -2155,7 +2117,7 @@ prim P_while()			      /* Compile WHILE */
     Push = (stackitem) (hptr - 1);    /* Queue backpatch for REPEAT */
 }
 
-prim P_repeat() 		      /* Compile REPEAT */
+prim P_repeat(void) 		      /* Compile REPEAT */
 {
     stackitem off;
     stackitem *bp1, *bp;
@@ -2174,7 +2136,7 @@ prim P_repeat() 		      /* Compile REPEAT */
     Pop;
 }
 
-prim P_do()			      /* Compile DO */
+prim P_do(void)			      /* Compile DO */
 {
     Compiling;
     Compconst(s_xdo);		      /* Compile runtime DO word */
@@ -2183,7 +2145,7 @@ prim P_do()			      /* Compile DO */
     Push = (stackitem) hptr;	      /* Save jump back address on stack */
 }
 
-prim P_xdo()			      /* Execute DO */
+prim P_xdo(void)			      /* Execute DO */
 {
     Sl(2);
     Rso(3);
@@ -2195,7 +2157,7 @@ prim P_xdo()			      /* Execute DO */
     stk -= 2;
 }
 
-prim P_qdo()			      /* Compile ?DO */
+prim P_qdo(void)			      /* Compile ?DO */
 {
     Compiling;
     Compconst(s_xqdo);		      /* Compile runtime ?DO word */
@@ -2204,7 +2166,7 @@ prim P_qdo()			      /* Compile ?DO */
     Push = (stackitem) hptr;	      /* Save jump back address on stack */
 }
 
-prim P_xqdo()			      /* Execute ?DO */
+prim P_xqdo(void)			      /* Execute ?DO */
 {
     Sl(2);
     if (S0 == S1) {
@@ -2220,7 +2182,7 @@ prim P_xqdo()			      /* Execute ?DO */
     stk -= 2;
 }
 
-prim P_loop()			      /* Compile LOOP */
+prim P_loop(void)			      /* Compile LOOP */
 {
     stackitem off;
     stackitem *bp;
@@ -2236,7 +2198,7 @@ prim P_loop()			      /* Compile LOOP */
     Pop;
 }
 
-prim P_ploop()			      /* Compile +LOOP */
+prim P_ploop(void)			      /* Compile +LOOP */
 {
     stackitem off;
     stackitem *bp;
@@ -2252,7 +2214,7 @@ prim P_ploop()			      /* Compile +LOOP */
     Pop;
 }
 
-prim P_xloop()			      /* Execute LOOP */
+prim P_xloop(void)			      /* Execute LOOP */
 {
     Rsl(3);
     R0 = (rstackitem) (((stackitem) R0) + 1);
@@ -2264,7 +2226,7 @@ prim P_xloop()			      /* Execute LOOP */
     }
 }
 
-prim P_xploop() 		      /* Execute +LOOP */
+prim P_xploop(void) 		      /* Execute +LOOP */
 {
     stackitem niter;
 
@@ -2283,28 +2245,28 @@ prim P_xploop() 		      /* Execute +LOOP */
     }
 }
 
-prim P_leave()			      /* Compile LEAVE */
+prim P_leave(void)			      /* Compile LEAVE */
 {
     Rsl(3);
     ip = R2;
     rstk -= 3;
 }
 
-prim P_i()			      /* Obtain innermost loop index */
+prim P_i(void)			      /* Obtain innermost loop index */
 {
     Rsl(3);
     So(1);
     Push = (stackitem) R0;            /* It's the top item on return stack */
 }
 
-prim P_j()			      /* Obtain next-innermost loop index */
+prim P_j(void)			      /* Obtain next-innermost loop index */
 {
     Rsl(6);
     So(1);
     Push = (stackitem) rstk[-4];      /* It's the 4th item on return stack */
 }
 
-prim P_quit()			      /* Terminate execution */
+prim P_quit(void)			      /* Terminate execution */
 {
     rstk = rstack;		      /* Clear return stack */
 #ifdef WALKBACK
@@ -2313,6 +2275,7 @@ prim P_quit()			      /* Terminate execution */
     ip = NULL;			      /* Stop execution of current word */
 }
 
+#ifdef SLEEP
 prim P_sleep() // microsec ---
 { 
   Sl(1);
@@ -2326,14 +2289,15 @@ prim P_longsleep() // sec ---
   sleep(S0);
   Pop;
 }
+#endif
 
-prim P_abort()			      /* Abort, clearing data stack */
+prim P_abort(void)			      /* Abort, clearing data stack */
 {
     P_clear();			      /* Clear the data stack */
     P_quit();			      /* Shut down execution */
 }
 
-prim P_abortq() 		      /* Abort, printing message */
+prim P_abortq(void) 		      /* Abort, printing message */
 {
     if (state) {
 	stringlit = True;	      /* Set string literal expected */
@@ -2353,23 +2317,23 @@ prim P_abortq() 		      /* Abort, printing message */
 
 /*  Compilation primitives  */
 
-prim P_immediate()		      /* Mark most recent word immediate */
+prim P_immediate(void)		      /* Mark most recent word immediate */
 {
     dict->wname[0] |= IMMEDIATE;
 }
 
-prim P_lbrack() 		      /* Set interpret state */
+prim P_lbrack(void) 		      /* Set interpret state */
 {
     Compiling;
     state = Falsity;
 }
 
-prim P_rbrack() 		      /* Restore compile state */
+prim P_rbrack(void) 		      /* Restore compile state */
 {
     state = Truth;
 }
 
-Exported void P_dodoes()	      /* Execute indirect call on method */
+Exported void P_dodoes(void)	      /* Execute indirect call on method */
 {
     Rso(1);
     So(1);
@@ -2388,7 +2352,7 @@ Exported void P_dodoes()	      /* Execute indirect call on method */
     Push = (stackitem) (((stackitem *) curword) + Dictwordl);
 }
 
-prim P_does()			      /* Specify method for word */
+prim P_does(void)			      /* Specify method for word */
 {
 
     /* O.K., we were compiling our way through this definition and we've
@@ -2442,13 +2406,13 @@ prim P_does()			      /* Specify method for word */
     }
 }
 
-prim P_colon()			      /* Begin compilation */
+prim P_colon(void)			      /* Begin compilation */
 {
     state = Truth;		      /* Set compilation underway */
     P_create(); 		      /* Create conventional word */
 }
 
-prim P_semicolon()		      /* End compilation */
+prim P_semicolon(void)		      /* End compilation */
 {
     Compiling;
     Ho(1);
@@ -2461,7 +2425,7 @@ prim P_semicolon()		      /* End compilation */
     createword = NULL;		      /* Flag no word being created */
 }
 
-prim P_tick()			      /* Take address of next word */
+prim P_tick(void)			      /* Take address of next word */
 {
     int i;
 
@@ -2500,14 +2464,14 @@ prim P_tick()			      /* Take address of next word */
     }
 }
 
-prim P_bracktick()		      /* Compile in-line code address */
+prim P_bracktick(void)		      /* Compile in-line code address */
 {
     Compiling;
     ctickpend = True;		      /* Force literal treatment of next
 					 word in compile stream */
 }
 
-prim P_execute()		      /* Execute word pointed to by stack */
+prim P_execute(void)		      /* Execute word pointed to by stack */
 {
     dictword *wp;
 
@@ -2518,13 +2482,13 @@ prim P_execute()		      /* Execute word pointed to by stack */
 					 the word. */
 }
 
-prim P_body()			      /* Get body address for word */
+prim P_body(void)			      /* Get body address for word */
 {
     Sl(1);
     S0 += Dictwordl * sizeof(stackitem);
 }
 
-prim P_state()			      /* Get state of system */
+prim P_state(void)			      /* Get state of system */
 {
     So(1);
     Push = (stackitem) &state;
@@ -2534,7 +2498,7 @@ prim P_state()			      /* Get state of system */
 
 #ifdef DEFFIELDS
 
-prim P_find()			      /* Look up word in dictionary */
+prim P_find(void)			      /* Look up word in dictionary */
 {
     dictword *dw;
 
@@ -2555,32 +2519,32 @@ prim P_find()			      /* Look up word in dictionary */
 
 #define DfOff(fld)  (((char *) &(dict->fld)) - ((char *) dict))
 
-prim P_toname() 		      /* Find name field from compile addr */
+prim P_toname(void) 		      /* Find name field from compile addr */
 {
     Sl(1);
     S0 += DfOff(wname);
 }
 
-prim P_tolink() 		      /* Find link field from compile addr */
+prim P_tolink(void) 		      /* Find link field from compile addr */
 {
 if (DfOff(wnext) != 0) V printf("\n>LINK Foulup--wnext is not at zero!\n");
 /*  Sl(1);
     S0 += DfOff(wnext);  */	      /* Null operation.  Wnext is first */
 }
 
-prim P_frombody()		      /* Get compile address from body */
+prim P_frombody(void)		      /* Get compile address from body */
 {
     Sl(1);
     S0 -= Dictwordl * sizeof(stackitem);
 }
 
-prim P_fromname()		      /* Get compile address from name */
+prim P_fromname(void)		      /* Get compile address from name */
 {
     Sl(1);
     S0 -= DfOff(wname);
 }
 
-prim P_fromlink()		      /* Get compile address from link */
+prim P_fromlink(void)		      /* Get compile address from link */
 {
 if (DfOff(wnext) != 0) V printf("\nLINK> Foulup--wnext is not at zero!\n");
 /*  Sl(1);
@@ -2591,7 +2555,7 @@ if (DfOff(wnext) != 0) V printf("\nLINK> Foulup--wnext is not at zero!\n");
 
 #define DfTran(from,to) (((char *) &(dict->to)) - ((char *) &(dict->from)))
 
-prim P_nametolink()		      /* Get from name field to link */
+prim P_nametolink(void)		      /* Get from name field to link */
 {
     char *from, *to;
 
@@ -2604,7 +2568,7 @@ prim P_nametolink()		      /* Get from name field to link */
     S0 -= (to - from);
 }
 
-prim P_linktoname()		      /* Get from link field to name */
+prim P_linktoname(void)		      /* Get from link field to name */
 {
     char *from, *to;
 
@@ -2617,7 +2581,7 @@ prim P_linktoname()		      /* Get from link field to name */
     S0 += (to - from);
 }
 
-prim P_fetchname()		      /* Copy word name to string buffer */
+prim P_fetchname(void)		      /* Copy word name to string buffer */
 {
     Sl(2);			      /* nfa string -- */
     Hpc(S0);
@@ -2632,7 +2596,7 @@ prim P_fetchname()		      /* Copy word name to string buffer */
     Pop2;
 }
 
-prim P_storename()		      /* Store string buffer in word name */
+prim P_storename(void)		      /* Store string buffer in word name */
 {
     char tflags;
     char *cp;
@@ -2651,7 +2615,7 @@ prim P_storename()		      /* Store string buffer in word name */
 #endif /* DEFFIELDS */
 
 #ifdef SYSTEM
-prim P_system()
+prim P_system(void)
 {				      /* string -- status */
     Sl(1);
     Hpc(S0);
@@ -2660,7 +2624,7 @@ prim P_system()
 #endif /* SYSTEM */
 
 #ifdef TRACE
-prim P_trace()			      /* Set or clear tracing of execution */
+prim P_trace(void)			      /* Set or clear tracing of execution */
 {
     Sl(1);
     atl_trace = (S0 == 0) ? Falsity : Truth;
@@ -2669,7 +2633,7 @@ prim P_trace()			      /* Set or clear tracing of execution */
 #endif /* TRACE */
 
 #ifdef WALKBACK
-prim P_walkback()		      /* Set or clear error walkback */
+prim P_walkback(void)		      /* Set or clear error walkback */
 {
     Sl(1);
     atl_walkback = (S0 == 0) ? Falsity : Truth;
@@ -2679,7 +2643,7 @@ prim P_walkback()		      /* Set or clear error walkback */
 
 #ifdef WORDSUSED
 
-prim P_wordsused()		      /* List words used by program */
+prim P_wordsused(void)		      /* List words used by program */
 {
     dictword *dw = dict;
 
@@ -2697,7 +2661,7 @@ prim P_wordsused()		      /* List words used by program */
     V printf("\n");
 }
 
-prim P_wordsunused()		      /* List words not used by program */
+prim P_wordsunused(void)		      /* List words not used by program */
 {
     dictword *dw = dict;
 
@@ -2718,13 +2682,13 @@ prim P_wordsunused()		      /* List words not used by program */
 
 #ifdef COMPILERW
 
-prim P_brackcompile()		      /* Force compilation of immediate word */
+prim P_brackcompile(void)		      /* Force compilation of immediate word */
 {
     Compiling;
     cbrackpend = True;		      /* Set [COMPILE] pending */
 }
 
-prim P_literal()		      /* Compile top of stack as literal */
+prim P_literal(void)		      /* Compile top of stack as literal */
 {
     Compiling;
     Sl(1);
@@ -2734,7 +2698,7 @@ prim P_literal()		      /* Compile top of stack as literal */
     Pop;
 }
 
-prim P_compile()		      /* Compile address of next inline word */
+prim P_compile(void)		      /* Compile address of next inline word */
 {
     Compiling;
     Ho(1);
@@ -2742,14 +2706,14 @@ prim P_compile()		      /* Compile address of next inline word */
 					 instruction stream. */
 }
 
-prim P_backmark()		      /* Mark backward backpatch address */
+prim P_backmark(void)		      /* Mark backward backpatch address */
 {
     Compiling;
     So(1);
     Push = (stackitem) hptr;	      /* Push heap address onto stack */
 }
 
-prim P_backresolve()		      /* Emit backward jump offset */
+prim P_backresolve(void)		      /* Emit backward jump offset */
 {
     stackitem offset;
 
@@ -2762,7 +2726,7 @@ prim P_backresolve()		      /* Emit backward jump offset */
     Pop;
 }
 
-prim P_fwdmark()		      /* Mark forward backpatch address */
+prim P_fwdmark(void)		      /* Mark forward backpatch address */
 {
     Compiling;
     Ho(1);
@@ -2770,7 +2734,7 @@ prim P_fwdmark()		      /* Mark forward backpatch address */
     Hstore = 0;
 }
 
-prim P_fwdresolve()		      /* Emit forward jump offset */
+prim P_fwdresolve(void)		      /* Emit forward jump offset */
 {
     stackitem offset;
 
@@ -2778,289 +2742,11 @@ prim P_fwdresolve()		      /* Emit forward jump offset */
     Sl(1);
     Hpc(S0);
     offset = (hptr - (stackitem *) S0);
-    *((stackitem *) S0) = offset;
+    *(int_to_ptr(S0)) = offset;
     Pop;
 }
 
 #endif /* COMPILERW */
-
-#ifdef TELLDUS
-
-prim P_tell_rawevent() // string ---
-{
-   Sl(1);
-   tdRegisterRawDeviceEvent( rawcallback, (char *) S0);
-   Pop;
-}
-
-prim P_tell_deviceid() // integer --- Device
-{
-  Sl(1);
-  S0 = tdGetDeviceId(S0);
-} 
-
-prim P_tell_devicename() // Device --- Name
-{
-  Sl(1);
-  S0 = (stackitem) tdGetName(S0);
-}
-
-
-prim P_tell_devices() // --- n
-{
-  Push = (stackitem) tdGetNumberOfDevices();
-}
-
-prim P_tell_init() // ---
-{
-  tdInit();
-}
-
-prim P_tell_close() // ---
-{
-  tdClose();
-}
-
-prim P_tell_on() // device ---
-{
-  Sl(1);
-  tdTurnOn(S0);
-  Pop;
-}
-
-prim P_tell_off() // device ---
-{
-  Sl(1);
-  tdTurnOff(S0);
-  Pop;
-}
-
-prim P_tell_dim() // device level ---
-{
-	Sl(2);
-	tdDim(S0, (unsigned char)S1);
-	Pop2;
-}
-
-
-#endif /* TELLDUS */
-
-#ifdef GERTBOARD
-
-prim P_gert_io() // state ---
-{ // Setup and restore io
-  Sl(1);
-  if(S0 == 1)
-    setup_io(); // Map the I/O sections
-  else
-    restore_io(); // Unmap and free memory
-  Pop;
-}
-
-prim P_gert_setport() // channel state ---
-{ // Set a digital io port to a specified state
-  Sl(2);
-  if (S1 == 21)
-    S1 = 27;
-  INP_GPIO(S1);
-  OUT_GPIO(S1);
-  if (S0 == 1)
-    GPIO_SET0 = (1<<S1);
-  else
-    GPIO_CLR0 = (1<<S1);
-  Pop2;
-}
-
-prim P_gert_getport() // channel ---
-{ // Get a digital io port
-  Sl(1);
-  if (S0 == 21)
-    S0 = 27; // GP21 on Gertboard is controller by GPIO27
-  INP_GPIO(S0);
-  S0 = !!(GPIO_IN0 & (1 << S0));
-}
-
-prim P_gert_getnegedge() // channel wait_microsec --- clocks clocks_per_second
-{ // Get a digital io port negative edge
-  unsigned int i; // wait is duration until port is high again
-  clock_t start, end;
-
-  start = clock();
-  Sl(1);
-  if (S1 == 21)
-    S1 = 27;
-  INP_GPIO(S1);
-  i = 0;
-  while(GPIO_IN0 & (1 << S1))
-  {
-    i++;
-    if(i > 100000000) break;
-  }
-  usleep(S0);
-  end = clock();
-  S1 = (double) (end - start);
-  S0 = CLOCKS_PER_SEC;
-}
-
-prim P_gert_getposedge() // channel wait_microsec --- clocks clocks_per_second
-{ // Get a digital io port positive edge
-  unsigned int i; // wait is duration until port is low again
-  clock_t start, end;
-
-  start = clock();
-  Sl(1);
-  if (S1 == 21)
-    S1 = 27;
-  INP_GPIO(S1);
-  i = 0;
-  while(!(GPIO_IN0 & (1 << S1)))
-  {
-    i++;
-    if(i > 100000000) break;
-  }
-  usleep(S0);
-  end = clock();
-  S1 = (double) (end - start);
-  S0 = CLOCKS_PER_SEC;
-}
-
-prim P_gert_getatod() // chan --- voltage 
-{ // V will be in range 0-1023 (0-3.3V)
-    Sl(1);
-	INP_GPIO(8);  SET_GPIO_ALT(8,0);
-	INP_GPIO(9);  SET_GPIO_ALT(9,0);
-	INP_GPIO(10); SET_GPIO_ALT(10,0);
-	INP_GPIO(11); SET_GPIO_ALT(11,0);
-	setup_spi();
-    S0 = read_adc(S0);	
-}
-
-prim P_gert_burst() // chan delay samples --- n1, n2, nn
-{
-    unsigned int i, num, chan, delay; 
-	
-    Sl(3);
-	So(S0 - 3);
-	INP_GPIO(8);  SET_GPIO_ALT(8,0);
-	INP_GPIO(9);  SET_GPIO_ALT(9,0);
-	INP_GPIO(10); SET_GPIO_ALT(10,0);
-	INP_GPIO(11); SET_GPIO_ALT(11,0);
-	setup_spi();
-	num = S0;
-	delay = S1;
-	chan = S2;
-	Pop;
-	Pop;
-	Pop;
-	for(i = 0; i < num; i++){
-	    Push = (stackitem) read_adc(chan);
-		usleep(delay);
-	}
-}
-	
-
-prim P_gert_setdtoa() // chan volt --
-{ // V between 0 and 255
-    Sl(2);
-    INP_GPIO(7);  SET_GPIO_ALT(7,0);
-    INP_GPIO(9);  SET_GPIO_ALT(9,0);
-    INP_GPIO(10); SET_GPIO_ALT(10,0);
-    INP_GPIO(11); SET_GPIO_ALT(11,0);
-	setup_spi();
-    write_dac(S1, S0*16); // V_out = S0*16 / 256 * 2.048	
-    Pop2;
-}
-#endif /* GERTBOARD */
-
-
-#ifdef WIRINGPI
-prim P_wipi_setinterrupt() // pin edgetype -- bool
-{
-	unsigned int pin, type;
-
-	Sl(2);
-	pin = S0;
-    type = S1;
-    Pop;
-  // sets up the wiringPi library
-    wiringPiSetup();
- 
-  // set Pin 17/0 generate an interrupt on high-to-low transitions
-  // and attach wipiISRcallback() to the interrupt
-    S0 = (wiringPiISR(pin, type, &wipiISRcallback)) ? Truth : Falsity;
-
-#endif /* WIRINGPI */
-
-#ifdef I2C
-
-prim P_i2c_init() // 
-{
-	i2cfile = wiringPiI2CSetup (0x68);
-}
-
-prim P_i2c_read() // input_number
-{
-	Sl(1);
-	S0 = wiringPiI2CReadReg16(i2cfile, 0x90);
-//	if (S0 == -1 ) V printf("something went wrong! %s\n", strerror(errno));
-}
-#endif /* I2C */
-
-#ifdef WEBSOCKETS
-prim P_ws_connect() // "localhost" "1234" "/wsh" -- bool
-{
-	Sl(3);
-	Hpc(S0);
-	Hpc(S1);
-	Hpc(S2);
-	ctx = nopoll_ctx_new();
-	conn = nopoll_conn_new(ctx, (char *) S2, (char *) S1, NULL, (char *) S0, NULL, NULL);
-	nopoll_conn_wait_until_connection_ready (conn, 5);
-//	nopoll_conn_set_on_msg(conn,(noPollOnMessageHandler) &readcallback,"user_data");
-//	nopoll_loop_wait(ctx, 0);
-	Pop;
-	Pop;
-	S0 = (nopoll_conn_is_ok(conn)) ? Truth : Falsity;
-}
-
-prim P_ws_close() // --
-{
-	nopoll_conn_close (conn);
-	nopoll_ctx_unref(ctx);
-}
-
-prim P_ws_receive() // buffer length timeout_ms -- result
-{
-	Sl(3);
-	Hpc(S2);
-	int result;
-//	bzero((char *) S2,S1);
-	memset((char *) S2,0,S1);
-	result = nopoll_conn_read(conn,(char *) S2,S1,nopoll_true, S0);
-	Pop;
-	Pop;
-	S0 = result;	
-}
-
-prim P_ws_send() // string -- length
-{
-	Sl(1);
-	int bytes_written, length;
-	Hpc(S0);
-	length = strlen((char *) S0);
-	bytes_written = nopoll_conn_send_text(conn, (char *) S0, length);
-	if(bytes_written != length)
-		bytes_written = nopoll_conn_flush_writes(conn, 2000000, bytes_written);
-	S0 = bytes_written;
-}
-
-prim P_ws_ping() // --
-{
-	nopoll_conn_send_ping(conn);
-}
-
-#endif /* WEBSOCKETS */
-
 
 #ifdef TCP
 prim P_tcp_connect() // "localhost" 1234 -- bool
@@ -3111,7 +2797,7 @@ prim P_tcp_receive() // buffer length -- result (-1 = error)
 	S0 = bytes_received;
 }
 
-prim P_tcp_close() // --
+prim P_tcp_close(void) // --
 {
     close(sockfd);
 }
@@ -3288,8 +2974,10 @@ static struct primfcn primt[] = {
     {"0QUIT", P_quit},
     {"0ABORT", P_abort},
     {"1ABORT\"", P_abortq},
+#ifdef SLEEP
     {"0SLEEP", P_sleep},
     {"0LONGSLEEP", P_longsleep},
+#endif
 
 #ifdef SYSTEM
     {"0SYSTEM", P_system},
@@ -3378,48 +3066,12 @@ static struct primfcn primt[] = {
     {"0EVALUATE", P_evaluate},
 #endif /* EVALUATE */
 	
-#ifdef GERTBOARD
-	{"0SETIO", P_gert_setport},	
-    {"0GETIO", P_gert_getport},
-    {"0GETNEGEDGE", P_gert_getnegedge},
-    {"0GETPOSEDGE", P_gert_getposedge},
-	{"0GERTBOARD", P_gert_io},
-	{"0GETATOD", P_gert_getatod},
-	{"0GETBURST", P_gert_burst},
-	{"0SETDTOA", P_gert_setdtoa},		
-#endif /* GERTBOARD */
-
-#ifdef TELLDUS
-	  {"0TELLRAWCALLBACK", P_tell_rawevent},
-	  {"0TELLDEVICEID", P_tell_deviceid},
-	  {"0TELLDEVICENAME", P_tell_devicename},
-	  {"0TELLDEVICES", P_tell_devices},
-	  {"0TELLON", P_tell_on},
-	  {"0TELLOFF", P_tell_off},
-	  {"0TELLINIT", P_tell_init},
-	  {"0TELLCLOSE", P_tell_close},
-	  {"0TELLDIM", P_tell_dim},
-#endif /* TELLDUS */
-#ifdef I2C
-	  {"0I2CINIT", P_i2c_init},
-	  {"0I2CREAD", P_i2c_read},
-#endif /* I2C */
-#ifdef WEBSOCKETS
-	  {"0WSCONNECT", P_ws_connect},
-	  {"0WSSEND", P_ws_send},
-	  {"0WSREC", P_ws_receive},
-	  {"0WSCLOSE", P_ws_close},
-	  {"0WSPING", P_ws_ping},
-#endif /* WEBSOCKETS */
 #ifdef TCP
 	  {"0TCPCONNECT", P_tcp_connect},
 	  {"0TCPSEND", P_tcp_send},
 	  {"0TCPRECEIVE", P_tcp_receive},
 	  {"0TCPCLOSE", P_tcp_close},
 #endif /* TCP */
-#ifdef WIRINGPI
-	  {"0WIPIISR", P_wipi_setinterrupt},
-#endif /* WIRINGPI */
     {NULL, (codeptr) 0}
 };
 
@@ -3428,8 +3080,7 @@ static struct primfcn primt[] = {
 		     allocated word items, we get one buffer for all
 		     the items and link them internally within the buffer. */
 
-Exported void atl_primdef(pt)
-  struct primfcn *pt;
+void atl_primdef(primfcn *pt)
 {
     struct primfcn *pf = pt;
     dictword *nw;
@@ -3488,7 +3139,7 @@ Exported void atl_primdef(pt)
 
 /*  PWALKBACK  --  Print walkback trace.  */
 
-static void pwalkback()
+static void pwalkback(void)
 {
     if (atl_walkback && ((curword != NULL) || (wbptr > wback))) {
         V printf("Walkback:\n");
@@ -3505,8 +3156,7 @@ static void pwalkback()
 
 /*  TROUBLE  --  Common handler for serious errors.  */
 
-static void trouble(kind)
-  char *kind;
+static void trouble(const char *kind)
 {
 #ifdef MEMMESSAGE
     V printf("\n%s.\n", kind);
@@ -3522,8 +3172,7 @@ static void trouble(kind)
 
 /*  ATL_ERROR  --  Handle error detected by user-defined primitive.  */
 
-Exported void atl_error(kind)
-  char *kind;
+void atl_error(const char *kind)
 {
     trouble(kind);
     evalstat = ATL_APPLICATION;       /* Signify application-detected error */
@@ -3602,8 +3251,7 @@ static void divzero()
 
 /*  EXWORD  --	Execute a word (and any sub-words it may invoke). */
 
-static void exword(wp)
-  dictword *wp;
+static void exword(dictword *wp)
 {
     curword = wp;
 #ifdef TRACE
@@ -3643,7 +3291,7 @@ static void exword(wp)
 		  ensure that the length allocated agrees with the lengths
 		  given by the atl_... cells.  */
 
-void atl_init()
+void atl_init(void)
 {
     if (dict == NULL) {
 	atl_primdef(primt);	      /* Define primitive words */
@@ -3744,7 +3392,7 @@ void atl_init()
                 {"STDOUT", NULL},
                 {"STDERR", NULL}
 	    };
-	    int i;
+	    size_t i;
 	    dictword *dw;
 
     	    /* On some systems stdin, stdout, and stderr aren't
@@ -3773,8 +3421,7 @@ void atl_init()
                     word item if found or NULL if the word isn't
 		    in the dictionary. */
 
-dictword *atl_lookup(name)
-  char *name;
+dictword *atl_lookup(const char *name)
 {
     V strcpy(tokbuf, name);	      /* Use built-in token buffer... */
     ucase(tokbuf);                    /* so ucase() doesn't wreck arg string */
@@ -3784,8 +3431,7 @@ dictword *atl_lookup(name)
 /*  ATL_BODY  --  Returns the address of the body of a word, given
 		  its dictionary entry. */
 
-stackitem *atl_body(dw)
-  dictword *dw;
+stackitem *atl_body(dictword *dw)
 {
     return ((stackitem *) dw) + Dictwordl;
 }
@@ -3795,8 +3441,7 @@ stackitem *atl_body(dw)
 		  returned.  The in-progress evaluation status is
 		  preserved. */
 
-int atl_exec(dw)
-  dictword *dw;
+int atl_exec(dictword *dw)
 {
     int sestat = evalstat, restat;
 
@@ -3830,9 +3475,7 @@ int atl_exec(dw)
 		    the dictionary item for the new word, or NULL if
 		    the heap overflows. */
 
-dictword *atl_vardef(name, size)
-  char *name;
-  int size;
+dictword *atl_vardef(const char *name, int size)
 {
     dictword *di;
     int isize = (size + (sizeof(stackitem) - 1)) / sizeof(stackitem);
@@ -3862,8 +3505,7 @@ dictword *atl_vardef(name, size)
 
 /*  ATL_MARK  --  Mark current state of the system.  */
 
-void atl_mark(mp)
-  atl_statemark *mp;
+void atl_mark(atl_statemark *mp)
 {
     mp->mstack = stk;		      /* Save stack position */
     mp->mheap = hptr;		      /* Save heap allocation marker */
@@ -3873,8 +3515,7 @@ void atl_mark(mp)
 
 /*  ATL_UNWIND	--  Restore system state to previously saved state.  */
 
-void atl_unwind(mp)
-  atl_statemark *mp;
+void atl_unwind(atl_statemark *mp)
 {
 
     /* If atl_mark() was called before the system was initialised, and
@@ -3909,7 +3550,7 @@ void atl_unwind(mp)
 		   system state directly, as it may be in an unstable
 		   condition. */
 
-void atl_break()
+void atl_break(void)
 {
     broken = True;		      /* Set break request */
 }
@@ -3917,8 +3558,8 @@ void atl_break()
 
 /*  ATL_LOAD  --  Load a file into the system.	*/
 
-int atl_load(fp)
-  FILE *fp;
+#ifdef ATL_LOAD
+int atl_load(FILE *fp)
 {
     int es = ATL_SNORM;
     char s[134];
@@ -3954,16 +3595,16 @@ int atl_load(fp)
     instream = sinstr;		      /* Unstack input stream */
     return es;
 }
+#endif
 
 /*  ATL_PROLOGUE  --  Recognise and process prologue statement.
 		      Returns 1 if the statement was part of the
 		      prologue and 0 otherwise. */
 
-int atl_prologue(sp)
-  char *sp;
+static int atl_prologue(char *sp)
 {
     static struct {
-	char *pname;
+	const char *pname;
 	atl_int *pparam;
     } proname[] = {
         {"STACK ", &atl_stklen},
@@ -3974,7 +3615,7 @@ int atl_prologue(sp)
     };
 
     if (strncmp(sp, "\\ *", 3) == 0) {
-	int i;
+	size_t i;
 	char *vp = sp + 3, *ap;
 
 	ucase(vp);
@@ -3996,8 +3637,7 @@ V printf("Prologue set %sto %ld\n", proname[i].pname, *proname[i].pparam);
 
 /*  ATL_EVAL  --  Evaluate a string containing ATLAST words.  */
 
-int atl_eval(sp)
-  char *sp;
+int atl_eval(const char *sp)
 {
     int i;
 

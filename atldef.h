@@ -17,16 +17,15 @@
 		This program is in the public domain.
 
 */
-
 #include "atlast.h"                   /* Define user linkage structures */
 
-typedef void (*codeptr)();	      /* Machine code pointer */
+typedef void (*codeptr)(void);	      /* Machine code pointer */
 
 /*  Dictionary word entry  */
 
 typedef struct dw {
     struct dw *wnext;		      /* Next word in dictionary */
-    char *wname;		      /* Word name.  The first character is
+    const char *wname;		      /* Word name.  The first character is
 					 actually the word flags, including
 					 the (IMMEDIATE) bit. */
     codeptr wcode;		      /* Machine code implementation */
@@ -40,7 +39,7 @@ typedef struct dw {
 
 /*  Data types	*/
 
-typedef long stackitem;
+typedef atl_int stackitem;
 typedef dictword **rstackitem;
 
 /* Stack items occupied by a dictionary word definition */
@@ -56,10 +55,10 @@ typedef dictword **rstackitem;
 
 /*  Primitive definition table entry  */
 
-struct primfcn {
-    char *pname;
+typedef struct primfcn {
+    const char *pname;
     codeptr pcode;
-};
+} primfcn;
 
 /*  Internal state marker item	*/
 
@@ -69,6 +68,17 @@ typedef struct {
     dictword ***mrstack;	      /* Return stack position marker */
     dictword *mdict;		      /* Dictionary marker */
 } atl_statemark;
+
+/* Functions called by exported extensions. */
+extern void atl_mark(atl_statemark *), atl_unwind(atl_statemark *);
+extern void atl_primdef(primfcn *);
+extern void atl_error(const char *);
+extern dictword *atl_lookup(const char *), *atl_vardef(const char *name, int size);
+extern stackitem *atl_body(dictword *);
+extern int atl_exec(dictword *);
+#ifdef EXPORT
+extern char *atl_fgetsp();
+#endif
 
 #ifdef EXPORT
 #define Exported
@@ -147,17 +157,8 @@ extern void P_create(), P_dodoes();
 #endif /* NOMANGLE */
 extern
 #endif
-void stakover(), rstakover(), heapover(), badpointer(),
-     stakunder(), rstakunder();
-#endif
-
-/* Functions called by exported extensions. */
-extern void atl_primdef(), atl_error();
-extern dictword *atl_lookup(), *atl_vardef();
-extern stackitem *atl_body();
-extern int atl_exec();
-#ifdef EXPORT
-extern char *atl_fgetsp();
+void stakover(void), rstakover(void), heapover(void), badpointer(void),
+     stakunder(void), rstakunder(void);
 #endif
 
 /*  If explicit alignment is not requested, enable it in any case for
