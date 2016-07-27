@@ -1,3 +1,6 @@
+#ifndef __ATLAST_H
+#define __ATLAST_H
+
 /*
 
 			      A T L A S T
@@ -19,16 +22,20 @@
 
 #include <types.h>
 
+#ifndef XAP
+#include <stdio.h> // FILE
+#endif
+
 typedef int32 atl_int;		      /* Stack integer type */
 typedef double atl_real;	      /* Real number type */
 
 /*  External symbols accessible by the calling program.  */
 
-extern size_t atl_stklen;	      /* Initial/current stack length */
-extern size_t atl_rstklen;	      /* Initial/current return stack length */
-extern size_t atl_heaplen;	      /* Initial/current heap length */
-extern size_t atl_ltempstr;	      /* Temporary string buffer length */
-extern size_t atl_ntempstr;	      /* Number of temporary string buffers */
+extern atl_int atl_stklen;	      /* Initial/current stack length */
+extern atl_int atl_rstklen;	      /* Initial/current return stack length */
+extern atl_int atl_heaplen;	      /* Initial/current heap length */
+extern atl_int atl_ltempstr;	      /* Temporary string buffer length */
+extern atl_int atl_ntempstr;	      /* Number of temporary string buffers */
 
 // TODO these could probably be regular integers but Truth (-1L) is assigned to them
 extern atl_int atl_trace;	      /* Trace mode */
@@ -61,8 +68,9 @@ extern atl_int atl_errline;	      /* Line number where last atl_load()
 
 extern void atl_init(void), atl_break(void);
 extern int atl_eval(const char *);
-extern int atl_prologue(const char *);
-#ifdef ATL_LOAD
+#ifndef XAP
 extern int atl_load(FILE *);
 #endif
 extern void atl_memstat(void);
+
+#endif

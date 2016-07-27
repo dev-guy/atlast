@@ -12,26 +12,26 @@
 
 */
 
+#include "atlast.h"
+
+#include <ctype.h> // islower 
+#include <stdlib.h> // malloc
+// #include <stddef.h> // size_t .. included by <stdlib>
+#include <string.h>
+#include <time.h>
+#ifndef XAP
+#include <stdarg.h> // scanf
+#include <stdio.h> // printf
+#include <sys/types.h>
+#endif
+
+#ifdef XAP
+#include "strtoul.c"
+#endif
+
 #define NOMANGLE
 #define NOMEMCHECK
-// WORDSUSED is set in order to avoid free/modification of string iterals.
-// If READONLYSTRINGS worked without WORDSUSED being defined, this
-// would not be necessary
-#define WORDSUSED
 #define READONLYSTRINGS
-
-#include <fm_mem.h>
-#include <stdarg.h> // scanf
-#include <stdio.h>
-#include <ctype.h> // islower etc
-#include <stdlib.h> // malloc
-#include <string.h>
-//#include <fm_debug.h>
-#include <time.h>
-//#include <sys/types.h>
-
-#include "strtoul.c"
-
 #define ALIGNMENT
 
 #ifdef ALIGNMENT
@@ -69,16 +69,15 @@
 //#define DOUBLE			      /* Double word primitives (2DUP) */
 //#define EVALUATE		      /* The EVALUATE primitive */
 //#define FILEIO			      /* File I/O primitives */
-//#define TCP		      		/* TCP functions */
 //#define MATH			      /* Math functions */
 //#define MEMMESSAGE		      /* Print message for stack/heap errors */
-//#define PROLOGUE		      /* Prologue processing and auto-init */
+#define PROLOGUE		      /* Prologue processing and auto-init */
 //#define REAL			      /* Floating point numbers */
 //#define SHORTCUTA		      /* Shortcut integer arithmetic words */
 //#define SHORTCUTC		      /* Shortcut integer comparison */
 //#define STRING			      /* String functions */
 //#define SYSTEM			      /* System command function */
-// #define SLEEP
+//#define SLEEP
 #ifndef NOMEMCHECK
 #define TRACE			      /* Execution tracing */
 #define WALKBACK		      /* Walkback trace */
@@ -93,7 +92,9 @@
 #include "atldef.h"
 
 #ifdef MATH
+#ifndef XAP
 #include <math.h>
+#endif
 #endif
 
 /* LINTLIBRARY */
@@ -135,11 +136,11 @@ typedef enum {False = 0, True = 1} Boolean;
 
 /*  Globals visible to calling programs  */
 
-size_t atl_stklen = 1000;	      /* Evaluation stack length */
-size_t atl_rstklen = 100;	      /* Return stack length */
-size_t atl_heaplen = 1000;	      /* Heap length */
-size_t atl_ltempstr = 256;	      /* Temporary string buffer length */
-size_t atl_ntempstr = 10;	      /* Number of temporary string buffers */
+atl_int atl_stklen = 1000;	      /* Evaluation stack length */
+atl_int atl_rstklen = 100;	      /* Return stack length */
+atl_int atl_heaplen = 1000;	      /* Heap length */
+atl_int atl_ltempstr = 256;	      /* Temporary string buffer length */
+atl_int atl_ntempstr = 10;	      /* Number of temporary string buffers */
 
 atl_int atl_trace = Falsity;	      /* Tracing if true */
 atl_int atl_walkback = Truth;	      /* Walkback enabled if true */
@@ -310,12 +311,6 @@ static void ucase(char *c)
 	c++;
     }
 }
-
-#ifdef TCP
-    int sockfd;
-    struct sockaddr_in serv_addr;
-    struct hostent *server;
-#endif
 
 /*  TOKEN  --  Scan a token and return its type.  */
 
@@ -874,14 +869,9 @@ prim P_0lss(void)			      /* Less than zero ? */
 
 /*  Storage allocation (heap) primitives  */
 
-static void * stackitem_to_ptr(stackitem x) {
-    size_t y = x;
-    return(void*)y;
-}
+#define stackitem_to_ptr(item, datatype) ( (datatype*) ((size_t) item) )
 
-static stackitem * stackitem_to_stackitem_ptr(stackitem x) {
-    return (stackitem*) stackitem_to_ptr(x);
-}
+#define stackitem_to_stackitem_ptr(x) stackitem_to_ptr(x, stackitem)
 
 static stackitem * ptr_to_stackitem_ptr(void * x) {
     return (stackitem*) x;
@@ -1121,7 +1111,7 @@ prim P_array(void)			      /* Declare array */
 prim P_strlit(void) 		      /* Push address of string literal */
 {
     So(1);
-    Push = (stackitem) (((char *) ip) + 1);
+    Push = ptr_to_stackitem (((char *) ip) + 1);
 #ifdef TRACE
     if (atl_trace) {
         V printf("\"%s\" ", (((char *) ip) + 1));
@@ -1145,7 +1135,7 @@ prim P_strcpy(void) 		      /* Copy string to address on stack */
     Sl(2);
     Hpc(S0);
     Hpc(S1);
-    V strcpy((char *) S0, (char *) S1);
+    V strcpy(stackitem_to_ptr(S0, char*), stackitem_to_ptr(S1, char*));
     Pop2;
 }
 
@@ -2332,7 +2322,8 @@ prim P_abortq(void) 		      /* Abort, printing message */
 	stringlit = True;	      /* Set string literal expected */
 	Compconst(s_abortq);	      /* Compile ourselves */
     } else {
-        V printf("%s", (char *) ip);  /* Otherwise, print string literal
+        // V printf("%s", (char *) ip); 
+        /* Otherwise, print string literal
 					 in in-line code. */
 #ifdef WALKBACK
 	pwalkback();
@@ -2473,10 +2464,10 @@ prim P_tick(void)			      /* Take address of next word */
 		So(1);
 		Push = ptr_to_stackitem(di); /* Push word compile address */
 	    } else {
-                V printf(" '%s' undefined ", tokbuf);
+//                V printf(" '%s' undefined ", tokbuf);
 	    }
 	} else {
-            V printf("\nWord not specified when expected.\n");
+  //          V printf("\nWord not specified when expected.\n");
 	    P_abort();
 	}
     } else {
@@ -2487,7 +2478,7 @@ prim P_tick(void)			      /* Take address of next word */
 	if (ip == NULL) {
 	    tickpend = True;	      /* Set tick pending */
 	} else {
-            V printf("\nWord requested by ` not on same input line.\n");
+//            V printf("\nWord requested by ` not on same input line.\n");
 	    P_abort();
 	}
     }
@@ -2505,7 +2496,7 @@ prim P_execute(void)		      /* Execute word pointed to by stack */
     dictword *wp;
 
     Sl(1);
-    wp = (dictword*) stackitem_to_ptr(S0);	      /* Load word address from stack */
+    wp = stackitem_to_ptr(S0, dictword);	      /* Load word address from stack */
     Pop;			      /* Pop data stack before execution */
     exword(wp); 		      /* Recursively call exword() to run
 					 the word. */
@@ -2678,7 +2669,7 @@ prim P_wordsused(void)		      /* List words used by program */
 
     while (dw != NULL) {
 	if (*(dw->wname) & WORDUSED) {
-           V printf("\n%s", dw->wname + 1);
+//           V printf("\n%s", dw->wname + 1);
 	}
 #ifdef Keyhit
 	if (kbquit()) {
@@ -2687,7 +2678,7 @@ prim P_wordsused(void)		      /* List words used by program */
 #endif
 	dw = dw->wnext;
     }
-    V printf("\n");
+  //  V printf("\n");
 }
 
 prim P_wordsunused(void)		      /* List words not used by program */
@@ -2696,7 +2687,7 @@ prim P_wordsunused(void)		      /* List words not used by program */
 
     while (dw != NULL) {
 	if (!(*(dw->wname) & WORDUSED)) {
-           V printf("\n%s", dw->wname + 1);
+//           V printf("\n%s", dw->wname + 1);
 	}
 #ifdef Keyhit
 	if (kbquit()) {
@@ -2705,7 +2696,7 @@ prim P_wordsunused(void)		      /* List words not used by program */
 #endif
 	dw = dw->wnext;
     }
-    V printf("\n");
+//    V printf("\n");
 }
 #endif /* WORDSUSED */
 
@@ -2776,65 +2767,6 @@ prim P_fwdresolve(void)		      /* Emit forward jump offset */
 }
 
 #endif /* COMPILERW */
-
-#ifdef TCP
-prim P_tcp_connect() // "localhost" 1234 -- bool
-{
-	int portno,result = -1;
-	Sl(2)
-	Hpc(S1);
-	portno = S0;
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0) 
-        result = 0;
-    server = gethostbyname((char *) S1);
-    if (server == NULL)
-        result = 0;
-
- //   bzero((char *) &serv_addr, sizeof(serv_addr));
-    memset((char *) &serv_addr,0,sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    bcopy((char *)server->h_addr, 
-         (char *)&serv_addr.sin_addr.s_addr,
-         server->h_length);
-    serv_addr.sin_port = htons(portno);
-    if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) 
-        result = 0;
-    Pop;
-    S0 = result;
-}
-
-prim P_tcp_send() // string length -- result
-{
-	int bytes_written;
-	Sl(2);
-	Hpc(S1);
-    bytes_written = write(sockfd,(char *) S1,S0);
-    Pop;
-    S0 = bytes_written;
-}
-
-prim P_tcp_receive() // buffer length -- result (-1 = error)
-{
-	int bytes_received;
-	Sl(2);
-	Hpc(S1);
-//    bzero((char *) S1,S0);
-    memset((char *) S1,0,S0);
-    bytes_received = read(sockfd,(char *) S1,S0);
-    Pop;
-	S0 = bytes_received;
-}
-
-prim P_tcp_close(void) // --
-{
-    close(sockfd);
-}
-
-#endif
-
-
-
 
 /*  Table of primitive words  */
 
@@ -3095,12 +3027,6 @@ static struct primfcn primt[] = {
     {"0EVALUATE", P_evaluate},
 #endif /* EVALUATE */
 	
-#ifdef TCP
-	  {"0TCPCONNECT", P_tcp_connect},
-	  {"0TCPSEND", P_tcp_send},
-	  {"0TCPRECEIVE", P_tcp_receive},
-	  {"0TCPCLOSE", P_tcp_close},
-#endif /* TCP */
     {NULL, (codeptr) 0}
 };
 
@@ -3114,12 +3040,10 @@ void atl_primdef(primfcn *pt)
     struct primfcn *pf = pt;
     dictword *nw;
     int i, n = 0;
-#ifdef WORDSUSED
 #ifdef READONLYSTRINGS
     unsigned int nltotal;
     char *dynames, *cp;
 #endif /* READONLYSTRINGS */
-#endif /* WORDSUSED */
 
     /* Count the number of definitions in the table. */
 
@@ -3128,7 +3052,6 @@ void atl_primdef(primfcn *pt)
 	pf++;
     }
 
-#ifdef WORDSUSED
 #ifdef READONLYSTRINGS
     nltotal = n;
     for (i = 0; i < n; i++) {
@@ -3141,19 +3064,16 @@ void atl_primdef(primfcn *pt)
     }
     cp = dynames;
 #endif /* READONLYSTRINGS */
-#endif /* WORDSUSED */
 
     nw = (dictword *) alloc(n * sizeof(dictword));
 
     nw[n - 1].wnext = dict;
     dict = nw;
     for (i = 0; i < n; i++) {
-#ifdef WORDSUSED
 #ifdef READONLYSTRINGS
     	nw->wname = cp;
 	cp += strlen(cp) + 1;
 #endif /* READONLYSTRINGS */
-#endif /* WORDSUSED */
 	nw->wcode = pt->pcode;
 	if (i != (n - 1)) {
 	    nw->wnext = nw + 1;
@@ -3378,7 +3298,7 @@ void atl_init(void)
 	       we acquire for the heap is the sum of the heap and temporary
 	       string requests. */
 
-	    size_t i;
+	    atl_int i;
 	    char *cp;
 
 	    /* Force length of temporary strings to even number of
@@ -3587,7 +3507,7 @@ void atl_break(void)
 
 /*  ATL_LOAD  --  Load a file into the system.	*/
 
-#ifdef ATL_LOAD
+#ifndef XAP
 int atl_load(FILE *fp)
 {
     int es = ATL_SNORM;
@@ -3630,25 +3550,27 @@ int atl_load(FILE *fp)
 		      Returns 1 if the statement was part of the
 		      prologue and 0 otherwise. */
 
-int atl_prologue(const char *const sp)
+static int atl_prologue(const char *const sp)
 {
     static struct {
 	const char *pname;
-	size_t *pparam;
+	atl_int *pparam;
     } proname[] = {
-        {"STACK ", &atl_stklen},
-        {"RSTACK ", &atl_rstklen},
-        {"HEAP ", &atl_heaplen},
-        {"TEMPSTRL ", &atl_ltempstr},
-        {"TEMPSTRN ", &atl_ntempstr}
+        {"stack ", &atl_stklen},
+        {"rstack ", &atl_rstklen},
+        {"heap ", &atl_heaplen},
+        {"tempstrl ", &atl_ltempstr},
+        {"tempstrn ", &atl_ntempstr}
     };
 
     if (strncmp(sp, "\\ *", 3) == 0) {
-	size_t i;
 	const char *vp = sp + 3;
     const char *ap;
 
+    // ucase removed so const strings not modified. words must be lowercase.
+    // READONLYSTRINGS was not honored here
 	//ucase(vp);
+    size_t i;
 	for (i = 0; i < ELEMENTS(proname); i++) {
 	    if (strncmp(vp, proname[i].pname,
 		    strlen(proname[i].pname)) == 0) {
@@ -3773,8 +3695,9 @@ V printf(" Forgetting DOES> word. ");
 		       it on the return stack. */
 		    defpend = False;
 		    ucase(tokbuf);
-		    if (atl_redef && (lookup(tokbuf) != NULL))
-                        V printf("\n%s isn't unique.", tokbuf);
+		    if (atl_redef && (lookup(tokbuf) != NULL)) {
+                        // V printf("\n%s isn't unique.", tokbuf);
+                    }
 		    enter(tokbuf);
 		} else {
 		    di = lookup(tokbuf);
@@ -3889,7 +3812,7 @@ V printf(" Forgetting DOES> word. ");
 		break;
 #endif /* STRING */
 	    default:
-                V printf("\nUnknown token type %d\n", i);
+//                V printf("\nUnknown token type %d\n", i);
 		break;
 	}
     }
