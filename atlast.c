@@ -1,10 +1,10 @@
 /*
-
 			      A T L A S T
 
 	 Autodesk Threaded Language Application System Toolkit
 
 		    Main Interpreter and Compiler
+
 
      Designed and implemented in January of 1990 by John Walker.
 
@@ -14,6 +14,11 @@
 
 #define NOMANGLE
 #define NOMEMCHECK
+// WORDSUSED is set in order to avoid free/modification of string iterals.
+// If READONLYSTRINGS worked without WORDSUSED being defined, this
+// would not be necessary
+#define WORDSUSED
+#define READONLYSTRINGS
 
 #include <fm_mem.h>
 #include <stdarg.h> // scanf
@@ -130,17 +135,17 @@ typedef enum {False = 0, True = 1} Boolean;
 
 /*  Globals visible to calling programs  */
 
-atl_int atl_stklen = 1000;	      /* Evaluation stack length */
-atl_int atl_rstklen = 100;	      /* Return stack length */
-atl_int atl_heaplen = 1000;	      /* Heap length */
-atl_int atl_ltempstr = 256;	      /* Temporary string buffer length */
-atl_int atl_ntempstr = 10;	      /* Number of temporary string buffers */
+size_t atl_stklen = 1000;	      /* Evaluation stack length */
+size_t atl_rstklen = 100;	      /* Return stack length */
+size_t atl_heaplen = 1000;	      /* Heap length */
+size_t atl_ltempstr = 256;	      /* Temporary string buffer length */
+size_t atl_ntempstr = 10;	      /* Number of temporary string buffers */
 
 atl_int atl_trace = Falsity;	      /* Tracing if true */
 atl_int atl_walkback = Truth;	      /* Walkback enabled if true */
 atl_int atl_comment = Falsity;	      /* Currently ignoring a comment */
 atl_int atl_redef = Truth;	      /* Allow redefinition without issuing
-                                         the "not unique" message. */
+                                       the "not unique" message. */
 atl_int atl_errline = 0;	      /* Line where last atl_load failed */
 
 /*  Local variables  */
@@ -221,7 +226,11 @@ static atl_real tokreal;	      /* Scanned real number */
 Exported atl_real rbuf0, rbuf1, rbuf2; /* Real temporary buffers */
 #endif
 #endif
+
+#ifdef CONIO
 static long base = 10;		      /* Number base */
+#endif
+
 Exported dictword **ip = NULL;	      /* Instruction pointer */
 Exported dictword *curword = NULL;    /* Current word being executed */
 static int evalstat = ATL_SNORM;      /* Evaluator status */
@@ -269,9 +278,11 @@ STATIC void pwalkback(void);
 
 /*  ALLOC  --  Allocate memory and error upon exhaustion.  */
 
-static char *alloc(unsigned int size)
+// TODO Most of the callers of alloc use size_t casts to get the math right. Most
+// of it is no longer necessary
+static void *alloc(size_t size)
 {
-    char *cp = malloc(size);
+    void *cp = malloc(size);
 
 /* printf("\nAlloc %u", size); */
     if (cp == NULL) {
@@ -280,6 +291,11 @@ static char *alloc(unsigned int size)
         // TODO what to do ?
     }
     return cp;
+}
+
+// On XAP, sizeof(char) = 2
+static void *str_alloc(int size){
+    return alloc( sizeof(char)*size );
 }
 
 /*  UCASE  --  Force letters in string to upper case.  */
@@ -454,9 +470,9 @@ static int token(const char ** cp)
             if (sscanf(tokbuf, "%li%c", &tokint, &tc) == 1)
 		return TokInt;
 #else
-            const char *tcp;
-            
-    	    tokint = strtoul(tokbuf, &tcp, 0);
+        const char *tcp;
+    	tokint = strtoul(tokbuf, &tcp, 0);
+
 	    if (*tcp == 0) {
 	    	return TokInt;
 	    }
@@ -583,7 +599,7 @@ void atl_memstat(void)
 static void enter(char *tkname)
 {
     /* Allocate name buffer */
-    createword->wname = alloc(((unsigned int) strlen(tkname) + 2));
+    createword->wname = str_alloc(strlen(tkname) + 2);
     createword->wname[0] = 0;	      /* Clear flags */
     V strcpy(createword->wname + 1, tkname); /* Copy token to name buffer */
     createword->wnext = dict;	      /* Chain rest of dictionary to word */
@@ -858,11 +874,24 @@ prim P_0lss(void)			      /* Less than zero ? */
 
 /*  Storage allocation (heap) primitives  */
 
-static stackitem * int_to_ptr(int32 x) {
-    return ((stackitem*)NULL)+x;
+static void * stackitem_to_ptr(stackitem x) {
+    size_t y = x;
+    return(void*)y;
 }
 
-static int32 ptr_to_int(const void *x) {
+static stackitem * stackitem_to_stackitem_ptr(stackitem x) {
+    return (stackitem*) stackitem_to_ptr(x);
+}
+
+static stackitem * ptr_to_stackitem_ptr(void * x) {
+    return (stackitem*) x;
+}
+
+static rstackitem stackitem_to_rstackitem(stackitem x) {
+    return ((rstackitem)NULL)+x;
+}
+
+static stackitem ptr_to_stackitem(const void *x) {
     uint16 bytes[2];
  
     memcpy(bytes, x, 4);
@@ -873,14 +902,14 @@ static int32 ptr_to_int(const void *x) {
 prim P_here(void)			      /* Push current heap address */
 {
     So(1);
-    Push = ptr_to_int(hptr);
+    Push = ptr_to_stackitem(hptr);
 }
 
 prim P_bang(void)			      /* Store value into address */
 {
     Sl(2);
-    Hpc(ptr_to_int(S0));
-    *(int_to_ptr(S0)) = S1;
+    Hpc(ptr_to_stackitem(S0));
+    *(stackitem_to_stackitem_ptr(S0)) = S1;
     Pop2;
 }
 
@@ -888,14 +917,14 @@ prim P_at(void)			      /* Fetch value from address */
 {
     Sl(1);
     Hpc(S0);
-    S0 = *(int_to_ptr(S0));
+    S0 = *(stackitem_to_stackitem_ptr(S0));
 }
 
 prim P_plusbang(void)		      /* Add value at specified address */
 {
     Sl(2);
     Hpc(S0);
-    *(int_to_ptr(S0)) += S1;
+    *(stackitem_to_stackitem_ptr(S0)) += S1;
     Pop2;
 }
 
@@ -922,7 +951,7 @@ prim P_cbang(void)			      /* Store byte value into address */
 {
     Sl(2);
     Hpc(S0);
-    *(int_to_ptr(S0)) = S1;
+    *(stackitem_to_stackitem_ptr(S0)) = S1;
     Pop2;
 }
 
@@ -930,7 +959,7 @@ prim P_cat(void)			      /* Fetch byte value from address */
 {
     Sl(1);
     Hpc(S0);
-    S0 = *(int_to_ptr(S0));
+    S0 = *(stackitem_to_stackitem_ptr(S0));
 }
 
 prim P_ccomma(void) 		      /* Store one byte on heap */
@@ -947,7 +976,7 @@ prim P_ccomma(void) 		      /* Store one byte on heap */
 
 prim P_cequal(void) 		      /* Align heap pointer after storing */
 {				      /* a series of bytes. */
-    stackitem n = (ptr_to_int(hptr)) - (ptr_to_int(heap)) %
+    stackitem n = (ptr_to_stackitem(hptr)) - (ptr_to_stackitem(heap)) %
 			(sizeof(stackitem));
 
     if (n != 0) {
@@ -963,7 +992,7 @@ prim P_cequal(void) 		      /* Align heap pointer after storing */
 prim P_var(void)			      /* Push body address of current word */
 {
     So(1);
-    Push = ptr_to_int(curword) + Dictwordl;
+    Push = ptr_to_stackitem(curword) + Dictwordl;
 }
 
 Exported void P_create(void)	      /* Create new word */
@@ -991,7 +1020,7 @@ prim P_variable(void)		      /* Declare variable */
 prim P_con(void)			      /* Push value in body */
 {
     So(1);
-    Push = *(((stackitem *) curword) + Dictwordl);
+    Push = *((ptr_to_stackitem_ptr(curword)) + Dictwordl);
 }
 
 prim P_constant(void)		      /* Declare constant */
@@ -1014,7 +1043,7 @@ prim P_arraysub(void)		      /* Array subscript calculation */
     stackitem *isp;
 
     Sl(1);
-    array = (((stackitem *) curword) + Dictwordl);
+    array = ((ptr_to_stackitem_ptr(curword)) + Dictwordl);
     Hpc(array);
     nsubs = *array++;		      /* Load number of subscripts */
     esize = *array++;		      /* Load element size */
@@ -1037,8 +1066,8 @@ prim P_arraysub(void)		      /* Array subscript calculation */
        and the fundamental element size, then skip the subscript bounds
        words (as many as there are subscripts).  Then, finally, we
        can add the calculated offset into the array. */
-    S0 = (stackitem) (((char *) (((stackitem *) curword) +
-	    Dictwordl + 2 + nsubs)) + (esize * offset));
+    S0 = ptr_to_stackitem ( ptr_to_stackitem_ptr(curword) +
+	    Dictwordl + 2 + nsubs + esize * offset);
 }
 
 prim P_array(void)			      /* Declare array */
@@ -1250,7 +1279,7 @@ prim P_flit(void)			      /* Push floating point literal */
     }
 #endif /* TRACE */
     for (i = 0; i < Realsize; i++) {
-	Push = (stackitem) *ip++;
+	Push = ptr_to_stackitem(*ip)++;
     }
 }
 
@@ -1483,7 +1512,7 @@ prim P_question(void)		      /* Print value at address */
 {
     Sl(1);
     Hpc(S0);
-    V printf(base == 16 ? "%lX" : "%ld ", *(int_to_ptr(S0)));
+    V printf(base == 16 ? "%lX" : "%ld ", *(stackitem_to_stackitem_ptr(S0)));
     Pop;
 }
 
@@ -1582,7 +1611,7 @@ prim P_fopen(void)			      /* Open file: fname fmodes fd -- flag */
     if (fd == NULL) {
 	stat = Falsity;
     } else {
-	*(((stackitem *) S0) + 1) = (stackitem) fd;
+	*((stackitem_to_stackitem_ptr(S0)) + 1) = (stackitem) fd;
 	stat = Truth;
     }
     Pop2;
@@ -1596,7 +1625,7 @@ prim P_fclose(void) 		      /* Close file: fd -- */
     Isfile(S0);
     Isopen(S0);
     V fclose(FileD(S0));
-    *(((stackitem *) S0) + 1) = (stackitem) NULL;
+    *((stackitem_to_stackitem_ptr(S0)) + 1) = (stackitem) NULL;
     Pop;
 }
 
@@ -1837,7 +1866,7 @@ prim P_tor(void)			      /* Transfer stack top to return stack */
 {
     Rso(1);
     Sl(1);
-    Rpush = (rstackitem) S0;
+    Rpush = stackitem_to_rstackitem(S0);
     Pop;
 }
 
@@ -1845,7 +1874,7 @@ prim P_rfrom(void)			      /* Transfer return stack top to stack */
 {
     Rsl(1);
     So(1);
-    Push = (stackitem) R0;
+    Push = ptr_to_stackitem(R0);
     Rpop;
 }
 
@@ -1853,7 +1882,7 @@ prim P_rfetch(void) 		      /* Fetch top item from return stack */
 {
     Rsl(1);
     So(1);
-    Push = (stackitem) R0;
+    Push = ptr_to_stackitem(R0);
 }
 
 #ifdef Macintosh
@@ -1936,8 +1965,8 @@ prim P_2variable(void)		      /* Declare double variable */
 prim P_2con(void)			      /* Push double value in body */
 {
     So(2);
-    Push = *(((stackitem *) curword) + Dictwordl);
-    Push = *(((stackitem *) curword) + Dictwordl + 1);
+    Push = *((ptr_to_stackitem_ptr(curword)) + Dictwordl);
+    Push = *((ptr_to_stackitem_ptr(curword)) + Dictwordl + 1);
 }
 
 prim P_2constant(void)		      /* Declare double word constant */
@@ -1957,7 +1986,7 @@ prim P_2bang(void)			      /* Store double value into address */
 
     Sl(2);
     Hpc(S0);
-    sp = (stackitem *) S0;
+    sp = stackitem_to_stackitem_ptr(S0);
     *sp++ = S2;
     *sp = S1;
     Npop(3);
@@ -1970,7 +1999,7 @@ prim P_2at(void)			      /* Fetch double value from address */
     Sl(1);
     So(1);
     Hpc(S0);
-    sp = (stackitem *) S0;
+    sp = stackitem_to_stackitem_ptr(S0);
     S0 = *sp++;
     Push = *sp;
 }
@@ -1986,7 +2015,7 @@ prim P_dolit(void)			      /* Push instruction stream literal */
         V printf("%ld ", (long) *ip);
     }
 #endif
-    Push = (stackitem) *ip++;	      /* Push the next datum from the
+    Push = ptr_to_stackitem(*ip++);	      /* Push the next datum from the
 					 instruction stream. */
 }
 
@@ -2014,14 +2043,14 @@ prim P_exit(void)			      /* Return to top of return stack */
 
 prim P_branch(void) 		      /* Jump to in-line address */
 {
-    ip += (stackitem) *ip;	      /* Jump addresses are IP-relative */
+    ip += ptr_to_stackitem(*ip);	      /* Jump addresses are IP-relative */
 }
 
 prim P_qbranch(void)		      /* Conditional branch to in-line addr */
 {
     Sl(1);
     if (S0 == 0)		      /* If flag is false */
-	ip += (stackitem) *ip;	      /* then branch. */
+	ip += ptr_to_stackitem(*ip);	      /* then branch. */
     else			      /* Otherwise */
 	ip++;			      /* skip the in-line address. */
     Pop;
@@ -2032,7 +2061,7 @@ prim P_if(void)			      /* Compile IF word */
     Compiling;
     Compconst(s_qbranch);	      /* Compile question branch */
     So(1);
-    Push = (stackitem) hptr;	      /* Save backpatch address on stack */
+    Push = ptr_to_stackitem(hptr);	      /* Save backpatch address on stack */
     Compconst(0);		      /* Compile place-holder address cell */
 }
 
@@ -2045,9 +2074,9 @@ prim P_else(void)			      /* Compile ELSE word */
     Compconst(s_branch);	      /* Compile branch around other clause */
     Compconst(0);		      /* Compile place-holder address cell */
     Hpc(S0);
-    bp = (stackitem *) S0;	      /* Get IF backpatch address */
+    bp = stackitem_to_stackitem_ptr(S0);	      /* Get IF backpatch address */
     *bp = hptr - bp;
-    S0 = (stackitem) (hptr - 1);      /* Update backpatch for THEN */
+    S0 = ptr_to_stackitem(hptr - 1);      /* Update backpatch for THEN */
 }
 
 prim P_then(void)			      /* Compile THEN word */
@@ -2057,7 +2086,7 @@ prim P_then(void)			      /* Compile THEN word */
     Compiling;
     Sl(1);
     Hpc(S0);
-    bp = (stackitem *) S0;	      /* Get IF/ELSE backpatch address */
+    bp = stackitem_to_stackitem_ptr(S0);	      /* Get IF/ELSE backpatch address */
     *bp = hptr - bp;
     Pop;
 }
@@ -2076,7 +2105,7 @@ prim P_begin(void)			      /* Compile BEGIN */
 {
     Compiling;
     So(1);
-    Push = (stackitem) hptr;	      /* Save jump back address on stack */
+    Push = ptr_to_stackitem(hptr);	      /* Save jump back address on stack */
 }
 
 prim P_until(void)			      /* Compile UNTIL */
@@ -2088,7 +2117,7 @@ prim P_until(void)			      /* Compile UNTIL */
     Sl(1);
     Compconst(s_qbranch);	      /* Compile question branch */
     Hpc(S0);
-    bp = (stackitem *) S0;	      /* Get BEGIN address */
+    bp = stackitem_to_stackitem_ptr(S0);	      /* Get BEGIN address */
     off = -(hptr - bp);
     Compconst(off);		      /* Compile negative jumpback address */
     Pop;
@@ -2102,7 +2131,7 @@ prim P_again(void)			      /* Compile AGAIN */
     Compiling;
     Compconst(s_branch);	      /* Compile unconditional branch */
     Hpc(S0);
-    bp = (stackitem *) S0;	      /* Get BEGIN address */
+    bp = stackitem_to_stackitem_ptr(S0);	      /* Get BEGIN address */
     off = -(hptr - bp);
     Compconst(off);		      /* Compile negative jumpback address */
     Pop;
@@ -2114,7 +2143,7 @@ prim P_while(void)			      /* Compile WHILE */
     So(1);
     Compconst(s_qbranch);	      /* Compile question branch */
     Compconst(0);		      /* Compile place-holder address cell */
-    Push = (stackitem) (hptr - 1);    /* Queue backpatch for REPEAT */
+    Push = ptr_to_stackitem(hptr - 1);    /* Queue backpatch for REPEAT */
 }
 
 prim P_repeat(void) 		      /* Compile REPEAT */
@@ -2125,11 +2154,11 @@ prim P_repeat(void) 		      /* Compile REPEAT */
     Compiling;
     Sl(2);
     Hpc(S0);
-    bp1 = (stackitem *) S0;	      /* Get WHILE backpatch address */
+    bp1 = stackitem_to_stackitem_ptr(S0);	      /* Get WHILE backpatch address */
     Pop;
     Compconst(s_branch);	      /* Compile unconditional branch */
     Hpc(S0);
-    bp = (stackitem *) S0;	      /* Get BEGIN address */
+    bp = stackitem_to_stackitem_ptr(S0);	      /* Get BEGIN address */
     off = -(hptr - bp);
     Compconst(off);		      /* Compile negative jumpback address */
     *bp1 = hptr - bp1;                /* Backpatch REPEAT's jump out of loop */
@@ -2142,17 +2171,17 @@ prim P_do(void)			      /* Compile DO */
     Compconst(s_xdo);		      /* Compile runtime DO word */
     So(1);
     Compconst(0);		      /* Reserve cell for LEAVE-taking */
-    Push = (stackitem) hptr;	      /* Save jump back address on stack */
+    Push = ptr_to_stackitem(hptr);	      /* Save jump back address on stack */
 }
 
 prim P_xdo(void)			      /* Execute DO */
 {
     Sl(2);
     Rso(3);
-    Rpush = ip + ((stackitem) *ip);   /* Push exit address from loop */
+    Rpush = ip + ptr_to_stackitem(*ip);   /* Push exit address from loop */
     ip++;			      /* Increment past exit address word */
-    Rpush = (rstackitem) S1;	      /* Push loop limit on return stack */
-    Rpush = (rstackitem) S0;	      /* Iteration variable initial value to
+    Rpush = stackitem_to_rstackitem(S1);	      /* Push loop limit on return stack */
+    Rpush = stackitem_to_rstackitem(S0);	      /* Iteration variable initial value to
 					 return stack */
     stk -= 2;
 }
@@ -2163,20 +2192,20 @@ prim P_qdo(void)			      /* Compile ?DO */
     Compconst(s_xqdo);		      /* Compile runtime ?DO word */
     So(1);
     Compconst(0);		      /* Reserve cell for LEAVE-taking */
-    Push = (stackitem) hptr;	      /* Save jump back address on stack */
+    Push = ptr_to_stackitem(hptr);	      /* Save jump back address on stack */
 }
 
 prim P_xqdo(void)			      /* Execute ?DO */
 {
     Sl(2);
     if (S0 == S1) {
-	ip += (stackitem) *ip;
+	ip += ptr_to_stackitem(*ip);
     } else {
 	Rso(3);
-	Rpush = ip + ((stackitem) *ip);/* Push exit address from loop */
+	Rpush = ip + (ptr_to_stackitem(*ip));/* Push exit address from loop */
 	ip++;			      /* Increment past exit address word */
-	Rpush = (rstackitem) S1;      /* Push loop limit on return stack */
-	Rpush = (rstackitem) S0;      /* Iteration variable initial value to
+	Rpush = stackitem_to_rstackitem(S1);      /* Push loop limit on return stack */
+	Rpush = stackitem_to_rstackitem(S0);      /* Iteration variable initial value to
 					 return stack */
     }
     stk -= 2;
@@ -2191,7 +2220,7 @@ prim P_loop(void)			      /* Compile LOOP */
     Sl(1);
     Compconst(s_xloop); 	      /* Compile runtime loop */
     Hpc(S0);
-    bp = (stackitem *) S0;	      /* Get DO address */
+    bp = stackitem_to_stackitem_ptr(S0);	      /* Get DO address */
     off = -(hptr - bp);
     Compconst(off);		      /* Compile negative jumpback address */
     *(bp - 1) = (hptr - bp) + 1;      /* Backpatch exit address offset */
@@ -2207,7 +2236,7 @@ prim P_ploop(void)			      /* Compile +LOOP */
     Sl(1);
     Compconst(s_pxloop);	      /* Compile runtime +loop */
     Hpc(S0);
-    bp = (stackitem *) S0;	      /* Get DO address */
+    bp = stackitem_to_stackitem_ptr(S0);	      /* Get DO address */
     off = -(hptr - bp);
     Compconst(off);		      /* Compile negative jumpback address */
     *(bp - 1) = (hptr - bp) + 1;      /* Backpatch exit address offset */
@@ -2217,12 +2246,12 @@ prim P_ploop(void)			      /* Compile +LOOP */
 prim P_xloop(void)			      /* Execute LOOP */
 {
     Rsl(3);
-    R0 = (rstackitem) (((stackitem) R0) + 1);
-    if (((stackitem) R0) == ((stackitem) R1)) {
+    R0 = stackitem_to_rstackitem((ptr_to_stackitem(R0)) + 1);
+    if ((ptr_to_stackitem(R0)) == (ptr_to_stackitem(R1))) {
 	rstk -= 3;		      /* Pop iteration variable and limit */
 	ip++;			      /* Skip the jump address */
     } else {
-	ip += (stackitem) *ip;
+	ip += ptr_to_stackitem(*ip);
     }
 }
 
@@ -2233,15 +2262,15 @@ prim P_xploop(void) 		      /* Execute +LOOP */
     Sl(1);
     Rsl(3);
 
-    niter = ((stackitem) R0) + S0;
+    niter = (ptr_to_stackitem(R0)) + S0;
     Pop;
-    if ((niter >= ((stackitem) R1)) &&
-	(((stackitem) R0) < ((stackitem) R1))) {
+    if ((niter >= (ptr_to_stackitem(R1))) &&
+	((ptr_to_stackitem(R0)) < (ptr_to_stackitem(R1)))) {
 	rstk -= 3;		      /* Pop iteration variable and limit */
 	ip++;			      /* Skip the jump address */
     } else {
-	ip += (stackitem) *ip;
-	R0 = (rstackitem) niter;
+	ip += ptr_to_stackitem(*ip);
+	R0 = stackitem_to_rstackitem(niter);
     }
 }
 
@@ -2256,14 +2285,14 @@ prim P_i(void)			      /* Obtain innermost loop index */
 {
     Rsl(3);
     So(1);
-    Push = (stackitem) R0;            /* It's the top item on return stack */
+    Push = ptr_to_stackitem(R0);            /* It's the top item on return stack */
 }
 
 prim P_j(void)			      /* Obtain next-innermost loop index */
 {
     Rsl(6);
     So(1);
-    Push = (stackitem) rstk[-4];      /* It's the 4th item on return stack */
+    Push = ptr_to_stackitem(rstk[-4]);      /* It's the 4th item on return stack */
 }
 
 prim P_quit(void)			      /* Terminate execution */
@@ -2345,11 +2374,11 @@ Exported void P_dodoes(void)	      /* Execute indirect call on method */
        address before the word definition on the heap, we back up to
        the heap cell before the current word and load the pointer from
        there.  This is an ABSOLUTE heap address, not a relative offset. */
-    ip = *((dictword ***) (((stackitem *) curword) - 1));
+    ip = *((dictword ***) ((ptr_to_stackitem_ptr(curword)) - 1));
 
     /* Push the address of this word's body as the argument to the
        DOES> clause. */
-    Push = (stackitem) (((stackitem *) curword) + Dictwordl);
+    Push = ptr_to_stackitem((ptr_to_stackitem_ptr(curword)) + Dictwordl);
 }
 
 prim P_does(void)			      /* Specify method for word */
@@ -2390,7 +2419,7 @@ prim P_does(void)			      /* Specify method for word */
 	for (hp = hptr - 1; hp >= sp; hp--)
 	    *(hp + 1) = *hp;
 	hptr++; 		      /* Expand allocated length of word */
-	*sp++ = (stackitem) ip;       /* Store DOES> clause address before
+	*sp++ = ptr_to_stackitem(ip);       /* Store DOES> clause address before
                                          word's definition structure. */
 	createword = (dictword *) sp; /* Move word definition down 1 item */
 	createword->wcode = P_dodoes; /* Set code field to indirect jump */
@@ -2442,7 +2471,7 @@ prim P_tick(void)			      /* Take address of next word */
 	    ucase(tokbuf);
 	    if ((di = lookup(tokbuf)) != NULL) {
 		So(1);
-		Push = (stackitem) di; /* Push word compile address */
+		Push = ptr_to_stackitem(di); /* Push word compile address */
 	    } else {
                 V printf(" '%s' undefined ", tokbuf);
 	    }
@@ -2476,7 +2505,7 @@ prim P_execute(void)		      /* Execute word pointed to by stack */
     dictword *wp;
 
     Sl(1);
-    wp = (dictword *) S0;	      /* Load word address from stack */
+    wp = (dictword*) stackitem_to_ptr(S0);	      /* Load word address from stack */
     Pop;			      /* Pop data stack before execution */
     exword(wp); 		      /* Recursively call exword() to run
 					 the word. */
@@ -2491,7 +2520,7 @@ prim P_body(void)			      /* Get body address for word */
 prim P_state(void)			      /* Get state of system */
 {
     So(1);
-    Push = (stackitem) &state;
+    Push = ptr_to_stackitem(&state);
 }
 
 /*  Definition field access primitives	*/
@@ -2606,7 +2635,7 @@ prim P_storename(void)		      /* Store string buffer in word name */
     Hpc(S1);			      /* checking name pointers */
     tflags = **((char **) S0);
     free(*((char **) S0));
-    *((char **) S0) = cp = alloc((unsigned int) (strlen((char *) S1) + 2));
+    *((char **) S0) = cp = str_alloc((strlen((char *) S1) + 2));
     V strcpy(cp + 1, (char *) S1);
     *cp = tflags;
     Pop2;
@@ -2702,7 +2731,7 @@ prim P_compile(void)		      /* Compile address of next inline word */
 {
     Compiling;
     Ho(1);
-    Hstore = (stackitem) *ip++;       /* Compile the next datum from the
+    Hstore = ptr_to_stackitem(*ip)++;       /* Compile the next datum from the
 					 instruction stream. */
 }
 
@@ -2710,7 +2739,7 @@ prim P_backmark(void)		      /* Mark backward backpatch address */
 {
     Compiling;
     So(1);
-    Push = (stackitem) hptr;	      /* Push heap address onto stack */
+    Push = ptr_to_stackitem(hptr);	      /* Push heap address onto stack */
 }
 
 prim P_backresolve(void)		      /* Emit backward jump offset */
@@ -2721,7 +2750,7 @@ prim P_backresolve(void)		      /* Emit backward jump offset */
     Sl(1);
     Ho(1);
     Hpc(S0);
-    offset = -(hptr - (stackitem *) S0);
+    offset = -(hptr - stackitem_to_stackitem_ptr(S0));
     Hstore = offset;
     Pop;
 }
@@ -2730,7 +2759,7 @@ prim P_fwdmark(void)		      /* Mark forward backpatch address */
 {
     Compiling;
     Ho(1);
-    Push = (stackitem) hptr;	      /* Push heap address onto stack */
+    Push = ptr_to_stackitem(hptr);	      /* Push heap address onto stack */
     Hstore = 0;
 }
 
@@ -2741,8 +2770,8 @@ prim P_fwdresolve(void)		      /* Emit forward jump offset */
     Compiling;
     Sl(1);
     Hpc(S0);
-    offset = (hptr - (stackitem *) S0);
-    *(int_to_ptr(S0)) = offset;
+    offset = (hptr - stackitem_to_stackitem_ptr(S0));
+    *(stackitem_to_stackitem_ptr(S0)) = offset;
     Pop;
 }
 
@@ -3105,7 +3134,7 @@ void atl_primdef(primfcn *pt)
     for (i = 0; i < n; i++) {
 	nltotal += strlen(pt[i].pname);
     }
-    cp = dynames = alloc(nltotal);
+    cp = dynames = str_alloc(nltotal);
     for (i = 0; i < n; i++) {
 	strcpy(cp, pt[i].pname);
 	cp += strlen(cp) + 1;
@@ -3114,12 +3143,11 @@ void atl_primdef(primfcn *pt)
 #endif /* READONLYSTRINGS */
 #endif /* WORDSUSED */
 
-    nw = (dictword *) alloc((unsigned int) (n * sizeof(dictword)));
+    nw = (dictword *) alloc(n * sizeof(dictword));
 
     nw[n - 1].wnext = dict;
     dict = nw;
     for (i = 0; i < n; i++) {
-	nw->wname = pt->pname;
 #ifdef WORDSUSED
 #ifdef READONLYSTRINGS
     	nw->wname = cp;
@@ -3300,7 +3328,8 @@ void atl_init(void)
 	/* Look up compiler-referenced words in the new dictionary and
 	   save their compile addresses in static variables. */
 
-#define Cconst(cell, name)  cell = (stackitem) lookup(name); if(cell==0)abort()
+    //TODO check 'cell' is zero and do something
+#define Cconst(cell, name)  cell = ptr_to_stackitem(lookup(name))
         Cconst(s_exit, "EXIT");
         Cconst(s_lit, "(LIT)");
         Cconst(s_flit, "(FLIT)");
@@ -3317,7 +3346,7 @@ void atl_init(void)
 
 	if (stack == NULL) {	      /* Allocate stack if needed */
 	    stack = (stackitem *)
-		alloc(((unsigned int) atl_stklen) * sizeof(stackitem));
+		alloc((atl_stklen) * sizeof(stackitem));
 	}
 	stk = stackbot = stack;
 #ifdef MEMSTAT
@@ -3326,7 +3355,7 @@ void atl_init(void)
 	stacktop = stack + atl_stklen;
 	if (rstack == NULL) {	      /* Allocate return stack if needed */
 	    rstack = (dictword ***)
-		alloc(((unsigned int) atl_rstklen) *
+		alloc( atl_rstklen *
 		sizeof(dictword **));
 	}
 	rstk = rstackbot = rstack;
@@ -3336,7 +3365,7 @@ void atl_init(void)
 	rstacktop = rstack + atl_rstklen;
 #ifdef WALKBACK
 	if (wback == NULL) {
-	    wback = (dictword **) alloc(((unsigned int) atl_rstklen) *
+	    wback = (dictword **) alloc((atl_rstklen) *
 				    sizeof(dictword *));
 	}
 	wbptr = wback;
@@ -3349,21 +3378,21 @@ void atl_init(void)
 	       we acquire for the heap is the sum of the heap and temporary
 	       string requests. */
 
-	    int i;
+	    size_t i;
 	    char *cp;
 
 	    /* Force length of temporary strings to even number of
 	       stackitems. */
 	    atl_ltempstr += sizeof(stackitem) -
 		(atl_ltempstr % sizeof(stackitem));
-	    cp = alloc((((unsigned int) atl_heaplen) * sizeof(stackitem)) +
-			((unsigned int) (atl_ntempstr * atl_ltempstr)));
+	    cp = alloc( atl_heaplen * sizeof(stackitem) +
+			atl_ntempstr * atl_ltempstr);
 	    heapbot = (stackitem *) cp;
-	    strbuf = (char **) alloc(((unsigned int) atl_ntempstr) *
+	    strbuf = (char **) alloc(( atl_ntempstr) *
 				sizeof(char *));
 	    for (i = 0; i < atl_ntempstr; i++) {
 		strbuf[i] = cp;
-		cp += ((unsigned int) atl_ltempstr);
+		cp += atl_ltempstr;
 	    }
 	    cstrbuf = 0;
 	    heap = (stackitem *) cp;  /* Allocatable heap starts after
@@ -3536,8 +3565,8 @@ void atl_unwind(atl_statemark *mp)
        made. */
 
     while (dict != NULL && dict != dictprot && dict != mp->mdict) {
-	free(dict->wname);	      /* Release name string for item */
-	dict = dict->wnext;	      /* Link to previous item */
+	    free(dict->wname);	      /* Release name string for item */
+	    dict = dict->wnext;	      /* Link to previous item */
     }
 }
 
@@ -3601,11 +3630,11 @@ int atl_load(FILE *fp)
 		      Returns 1 if the statement was part of the
 		      prologue and 0 otherwise. */
 
-static int atl_prologue(char *sp)
+int atl_prologue(const char *const sp)
 {
     static struct {
 	const char *pname;
-	atl_int *pparam;
+	size_t *pparam;
     } proname[] = {
         {"STACK ", &atl_stklen},
         {"RSTACK ", &atl_rstklen},
@@ -3616,14 +3645,15 @@ static int atl_prologue(char *sp)
 
     if (strncmp(sp, "\\ *", 3) == 0) {
 	size_t i;
-	char *vp = sp + 3, *ap;
+	const char *vp = sp + 3;
+    const char *ap;
 
-	ucase(vp);
+	//ucase(vp);
 	for (i = 0; i < ELEMENTS(proname); i++) {
-	    if (strncmp(sp + 3, proname[i].pname,
+	    if (strncmp(vp, proname[i].pname,
 		    strlen(proname[i].pname)) == 0) {
-                if ((ap = strchr(sp + 3, ' ')) != NULL) {
-                    V sscanf(ap + 1, "%li", proname[i].pparam);
+                if ((ap = strchr(vp, ' ')) != NULL) {
+                	*(proname[i].pparam) = strtoul(ap+1, NULL, 0);
 #ifdef PROLOGUEDEBUG
 V printf("Prologue set %sto %ld\n", proname[i].pname, *proname[i].pparam);
 #endif
@@ -3698,9 +3728,9 @@ int atl_eval(const char *sp)
 
 			if (di != NULL) {
 			    do {
-				dw = dict;
-				if (dw->wname != NULL)
-				    free(dw->wname);
+				dw = dict;// why would the name be null?
+				if (dw->wname != NULL) 
+				    free(dict->wname);
 				dict = dw->wnext;
 			    } while (dw != di);
 			    /* Finally, back the heap allocation pointer
@@ -3730,7 +3760,7 @@ V printf(" Forgetting DOES> word. ");
 		    ucase(tokbuf);
 		    if ((di = lookup(tokbuf)) != NULL) {
 			So(1);
-			Push = (stackitem) di; /* Push word compile address */
+			Push = ptr_to_stackitem(di); /* Push word compile address */
 		    } else {
 #ifdef MEMMESSAGE
                         V printf(" '%s' undefined ", tokbuf);
@@ -3768,7 +3798,7 @@ V printf(" Forgetting DOES> word. ");
 			    }
 			    cbrackpend = False;
 			    Ho(1);	  /* Reserve stack space */
-			    Hstore = (stackitem) di;/* Compile word address */
+			    Hstore = ptr_to_stackitem(di);/* Compile word address */
 			} else {
 			    exword(di);   /* Execute word */
 			}

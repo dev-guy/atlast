@@ -25,7 +25,7 @@ typedef void (*codeptr)(void);	      /* Machine code pointer */
 
 typedef struct dw {
     struct dw *wnext;		      /* Next word in dictionary */
-    const char *wname;		      /* Word name.  The first character is
+    char *wname;		      /* Word name.  The first character is
 					 actually the word flags, including
 					 the (IMMEDIATE) bit. */
     codeptr wcode;		      /* Machine code implementation */
