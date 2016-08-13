@@ -22,29 +22,25 @@
 
 #include <types.h>
 
-#ifndef XAP
-#include <stdio.h> // FILE
-#endif
-
 typedef int32 atl_int;		      /* Stack integer type */
 typedef double atl_real;	      /* Real number type */
 
 /*  External symbols accessible by the calling program.  */
 
+#define ATL_STKLEN 500
+#define ATL_RSTKLEN 100 // 100
+#define ATL_HEAPLEN 500
+
 extern atl_int atl_stklen;	      /* Initial/current stack length */
 extern atl_int atl_rstklen;	      /* Initial/current return stack length */
 extern atl_int atl_heaplen;	      /* Initial/current heap length */
-extern atl_int atl_ltempstr;	      /* Temporary string buffer length */
-extern atl_int atl_ntempstr;	      /* Number of temporary string buffers */
+
+//extern atl_int atl_ltempstr;	      /* Temporary string buffer length */
+//extern atl_int atl_ntempstr;	      /* Number of temporary string buffers */
 
 // TODO these could probably be regular integers but Truth (-1L) is assigned to them
 extern atl_int atl_trace;	      /* Trace mode */
 extern atl_int atl_walkback;	      /* Error walkback enabled mode */
-extern atl_int atl_comment;	      /* Currently ignoring comment */
-extern atl_int atl_redef;	      /* Allow redefinition of words without
-                                         issuing the "not unique" warning. */
-extern atl_int atl_errline;	      /* Line number where last atl_load()
-					 errored or zero if no error. */
 
 /*  ATL_EVAL return status codes  */
 
@@ -54,7 +50,7 @@ extern atl_int atl_errline;	      /* Line number where last atl_load()
 #define ATL_RSTACKOVER	-3	      /* Return stack overflow */
 #define ATL_RSTACKUNDER -4	      /* Return stack underflow */
 #define ATL_HEAPOVER	-5	      /* Heap overflow */
-#define ATL_BADPOINTER	-6	      /* Pointer outside the heap */
+#define ATL_BADPOINTER	-6 	     /* Pointer outside the heap */
 #define ATL_UNDEFINED	-7	      /* Undefined word */
 #define ATL_FORGETPROT	-8	      /* Attempt to forget protected word */
 #define ATL_NOTINDEF	-9	      /* Compiler word outside definition */
@@ -67,10 +63,7 @@ extern atl_int atl_errline;	      /* Line number where last atl_load()
 /*  Entry points  */
 
 extern void atl_init(void), atl_break(void);
-extern int atl_eval(const char *);
-#ifndef XAP
-extern int atl_load(FILE *);
-#endif
+extern int atl_eval(const int *);
 extern void atl_memstat(void);
 
 #endif

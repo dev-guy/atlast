@@ -1,4 +1,5 @@
 /*
+
 			      A T L A S T
 
 	 Autodesk Threaded Language Application System Toolkit
@@ -11,105 +12,40 @@
 		This program is in the public domain.
 
 */
+/*  Subpackage configuration.  If INDIVIDUALLY is defined, the inclusion
 
 #include "atlast.h"
 
-#include <ctype.h> // islower 
-#include <stdlib.h> // malloc
-// #include <stddef.h> // size_t .. included by <stdlib>
-#include <string.h>
-#include <time.h>
-#ifndef XAP
-#include <stdarg.h> // scanf
-#include <stdio.h> // printf
-#include <sys/types.h>
-#endif
-
-#ifdef XAP
-#include "strtoul.c"
-#endif
-
-#define NOMANGLE
-#define NOMEMCHECK
-#define READONLYSTRINGS
-#define ALIGNMENT
-
-#ifdef ALIGNMENT
-#ifdef __TURBOC__
-#include <mem.h>
-#else
-#include <memory.h>
-#endif
-#endif
-
-#ifdef Macintosh
-/* Macintoshes need 32K segments, else barfage ensues */
-#pragma segment seg2a
-#endif /*Macintosh*/
-
-/*  Custom configuration.  If the tag CUSTOM has been defined (usually on
-    the compiler call line), we include the file "atlcfig.h", which may
-    then define INDIVIDUALLY and select the subpackages needed for its
-    application.  */
-
-#ifdef CUSTOM
-// #include "atlcfig.h"
-#endif
-
-/*  Subpackage configuration.  If INDIVIDUALLY is defined, the inclusion
     of subpackages is based on whether their compile-time tags are
     defined.  Otherwise, we automatically enable all the subpackages.  */
 
-#ifndef INDIVIDUALLY
-#define ARRAY			      /* Array subscripting words */
+//#define ARRAY			      /* Array subscripting words */
 //#define BREAK			      /* Asynchronous break facility */
 //#define COMPILERW		      /* Compiler-writing words */
-//#define CONIO			      /* Interactive console I/O */
 //#define DEFFIELDS		      /* Definition field access for words */
 //#define DOUBLE			      /* Double word primitives (2DUP) */
-//#define EVALUATE		      /* The EVALUATE primitive */
-//#define FILEIO			      /* File I/O primitives */
 //#define MATH			      /* Math functions */
 //#define MEMMESSAGE		      /* Print message for stack/heap errors */
-#define PROLOGUE		      /* Prologue processing and auto-init */
 //#define REAL			      /* Floating point numbers */
 //#define SHORTCUTA		      /* Shortcut integer arithmetic words */
 //#define SHORTCUTC		      /* Shortcut integer comparison */
 //#define STRING			      /* String functions */
 //#define SYSTEM			      /* System command function */
 //#define SLEEP
-#ifndef NOMEMCHECK
-#define TRACE			      /* Execution tracing */
-#define WALKBACK		      /* Walkback trace */
-#define WORDSUSED		      /* Logging of words used and unused */
-#endif /* NOMEMCHECK */
-#endif /* !INDIVIDUALLY */
+//#ifndef NOMEMCHECK
+//#define TRACE			      /* Execution tracing */
+//#define WALKBACK		      /* Walkback trace */
+//#define WORDSUSED		      /* Logging of words used and unused */
+//#endif /* NOMEMCHECK */
 
 #ifdef SLEEP
 #include <unistd.h>
 #endif
 
+#define EXPORT
 #include "atldef.h"
 
-#ifdef MATH
-#ifndef XAP
-#include <math.h>
-#endif
-#endif
-
-/* LINTLIBRARY */
-
-/* Implicit functions (work for all numeric types). */
-
-//#ifdef abs
-//#undef abs
-//#endif
-
-//#define abs(x)	 ((x) < 0    ? -(x) : (x))
-//#define max(a,b) ((a) >  (b) ?	(a) : (b))
-//#define min(a,b) ((a) <= (b) ?	(a) : (b))
-
-/*  Globals imported  */
+#include <mem.h>
 
 /*  Data types	*/
 
@@ -136,56 +72,48 @@ typedef enum {False = 0, True = 1} Boolean;
 
 /*  Globals visible to calling programs  */
 
-atl_int atl_stklen = 1000;	      /* Evaluation stack length */
-atl_int atl_rstklen = 100;	      /* Return stack length */
-atl_int atl_heaplen = 1000;	      /* Heap length */
-atl_int atl_ltempstr = 256;	      /* Temporary string buffer length */
-atl_int atl_ntempstr = 10;	      /* Number of temporary string buffers */
+atl_int atl_stklen = ATL_STKLEN;	      /* Evaluation stack length */
+atl_int atl_rstklen = ATL_RSTKLEN;	      /* Return stack length */
+atl_int atl_heaplen = ATL_HEAPLEN;	      /* Heap length */
+
+//atl_int atl_ltempstr = 256;	      /* Temporary string buffer length */
+//atl_int atl_ntempstr = 10;	      /* Number of temporary string buffers */
 
 atl_int atl_trace = Falsity;	      /* Tracing if true */
 atl_int atl_walkback = Truth;	      /* Walkback enabled if true */
-atl_int atl_comment = Falsity;	      /* Currently ignoring a comment */
 atl_int atl_redef = Truth;	      /* Allow redefinition without issuing
                                        the "not unique" message. */
-atl_int atl_errline = 0;	      /* Line where last atl_load failed */
-
-/*  Local variables  */
 
     /* The evaluation stack */
 
-Exported stackitem *stack = NULL;     /* Evaluation stack */
+Exported stackitem stack[ATL_STKLEN];
 Exported stackitem *stk;	      /* Stack pointer */
 Exported stackitem *stackbot;	      /* Stack bottom */
 Exported stackitem *stacktop;	      /* Stack top */
 
     /* The return stack */
 
-Exported dictword ***rstack = NULL;   /* Return stack */
+Exported dictword **rstack[ATL_RSTKLEN];   /* Return stack */
 Exported dictword ***rstk;	      /* Return stack pointer */
 Exported dictword ***rstackbot;       /* Return stack bottom */
 Exported dictword ***rstacktop;       /* Return stack top */
 
     /* The heap */
 
-Exported stackitem *heap = NULL;      /* Allocation heap */
+Exported stackitem heap[ATL_HEAPLEN];      /* Allocation heap */
 Exported stackitem *hptr;	      /* Heap allocation pointer */
 Exported stackitem *heapbot;	      /* Bottom of heap (temp string buffer) */
 Exported stackitem *heaptop;	      /* Top of heap */
 
-    /* The dictionary */
-
-Exported dictword *dict = NULL;       /* Dictionary chain head */
-Exported dictword *dictprot = NULL;   /* First protected item in dictionary */
-
     /* The temporary string buffers */
 
-Exported char **strbuf = NULL;	      /* Table of pointers to temp strings */
-Exported int cstrbuf = 0;	      /* Current temp string */
+//Exported char **strbuf = NULL;	      /* Table of pointers to temp strings */
+//Exported int cstrbuf = 0;	      /* Current temp string */
 
     /* The walkback trace stack */
 
 #ifdef WALKBACK
-static dictword **wback = NULL;       /* Walkback trace buffer */
+static dictword *wback[ATL_RSTKLEN];       /* Walkback trace buffer */
 static dictword **wbptr;	      /* Walkback trace pointer */
 #endif /* WALKBACK */
 
@@ -195,41 +123,15 @@ Exported dictword ***rstackmax;       /* Return stack maximum excursion */
 Exported stackitem *heapmax;	      /* Heap maximum excursion */
 #endif
 
-#ifdef FILEIO
-static char *fopenmodes[] = {
-#ifdef FBmode
-#define FMspecial
-    /* Fopen() mode table for systems that require a "b" in the
-       mode string for binary files. */
-    "", "r",  "",   "r+",
-    "", "rb", "",   "r+b",
-    "", "",   "w",  "w+",
-    "", "",   "wb", "w+b"
-#endif
-#ifndef FMspecial
-    /* Default fopen() mode table for SVID-compatible systems not
-       overridden by a special table above. */
-    "", "r",  "",   "r+",
-    "", "r",  "",   "r+",
-    "", "",   "w",  "w+",
-    "", "",   "w",  "w+"
-#endif
-};
-
-#endif /* FILEIO */
-
-static char tokbuf[128];	      /* Token buffer */
-static const char *instream = NULL;	      /* Current input stream line */
+//static char tokbuf[128];	      /* Token buffer */
+static const int *instream = NULL;	      /* Current input stream line */
 static long tokint;		      /* Scanned integer */
+
 #ifdef REAL
 static atl_real tokreal;	      /* Scanned real number */
 #ifdef ALIGNMENT
 Exported atl_real rbuf0, rbuf1, rbuf2; /* Real temporary buffers */
 #endif
-#endif
-
-#ifdef CONIO
-static long base = 10;		      /* Number base */
 #endif
 
 Exported dictword **ip = NULL;	      /* Instruction pointer */
@@ -239,322 +141,59 @@ static Boolean defpend = False;       /* Token definition pending */
 static Boolean forgetpend = False;    /* Forget pending */
 static Boolean tickpend = False;      /* Take address of next word */
 static Boolean ctickpend = False;     /* Compile-time tick ['] pending */
-static Boolean cbrackpend = False;    /* [COMPILE] pending */
-Exported dictword *createword = NULL; /* Address of word pending creation */
+//static Boolean cbrackpend = False;    /* [COMPILE] pending */
 static Boolean stringlit = False;     /* String literal anticipated */
 #ifdef BREAK
 static Boolean broken = False;	      /* Asynchronous break received */
 #endif
 
-#ifdef COPYRIGHT
-#ifndef HIGHC
-#ifndef lint
-static
-#endif
-#endif
-       char copyright[] = "ATLAST: This program is in the public domain.";
-#endif
-
-/* The following static cells save the compile addresses of words
-   generated by the compiler.  They are looked up immediately after
-   the dictionary is created.  This makes the compiler much faster
-   since it doesn't have to look up internally-reference words, and,
-   far more importantly, keeps it from being spoofed if a user redefines
-   one of the words generated by the compiler.	*/
-
-static stackitem s_exit, s_lit, s_flit, s_strlit, s_dotparen,
-		 s_qbranch, s_branch, s_xdo, s_xqdo, s_xloop,
-		 s_pxloop, s_abortq;
-
 /*  Forward functions  */
 
-STATIC void exword(dictword *);
-STATIC	void	trouble(const char *);
+static void exword(dictword *);
+static	void	trouble(const char *);
+
 #ifndef NOMEMCHECK
-STATIC void notcomp(void), divzero(void);
+//static void notcomp(void);
+//static void divzero(void);
 #endif
 #ifdef WALKBACK
-STATIC void pwalkback(void);
+static void pwalkback(void);
 #endif
 
-/*  ALLOC  --  Allocate memory and error upon exhaustion.  */
+#define stackitem_to_ptr(item, datatype) ( (datatype*) ((size_t) item) )
 
-// TODO Most of the callers of alloc use size_t casts to get the math right. Most
-// of it is no longer necessary
-static void *alloc(size_t size)
-{
-    void *cp = malloc(size);
+#define stackitem_to_stackitem_ptr(x) stackitem_to_ptr(x, stackitem)
 
-/* printf("\nAlloc %u", size); */
-    if (cp == NULL) {
-        // V fprintf(stderr, "\n\nOut of memory!  %u bytes requested.\n", size);
-	// abort(); 
-        // TODO what to do ?
-    }
-    return cp;
+#if 0
+static stackitem * ptr_to_stackitem_ptr(void * x) {
+    return (stackitem*) x;
 }
 
-// On XAP, sizeof(char) = 2
-static void *str_alloc(int size){
-    return alloc( sizeof(char)*size );
+static rstackitem stackitem_to_rstackitem(stackitem x) {
+    return ((rstackitem)NULL)+x;
 }
-
-/*  UCASE  --  Force letters in string to upper case.  */
-
-static void ucase(char *c)
-{
-    char ch;
-
-    while ((ch = *c) != EOS) {
-	if (islower(ch))
-	    *c = toupper(ch);
-	c++;
-    }
-}
-
-/*  TOKEN  --  Scan a token and return its type.  */
-
-static int token(const char ** cp)
-{
-    const char *sp = *cp;
-
-    while (True) {
-	char *tp = tokbuf;
-	unsigned int tl = 0;
-	Boolean istring = False, rstring = False;
-
-	if (atl_comment) {
-            while (*sp != ')') {
-		if (*sp == EOS) {
-		    *cp = sp;
-		    return TokNull;
-		}
-		sp++;
-	    }
-	    sp++;
-	    atl_comment = Falsity;
-	}
-
-	while (isspace(*sp))		  /* Skip leading blanks */
-	    sp++;
-
-        if (*sp == '"') {                 /* Is this a string ? */
-
-	    /* Assemble string token. */
-
-	    sp++;
-	    while (True) {
-		char c = *sp++;
-
-                if (c == '"') {
-		    sp++;
-		    *tp++ = EOS;
-		    break;
-		} else if (c == EOS) {
-		    rstring = True;
-		    *tp++ = EOS;
-		    break;
-		}
-                if (c == '\\') {
-		    c = *sp++;
-		    if (c == EOS) {
-			rstring = True;
-			break;
-		    }
-		    switch (c) {
-                        case 'b':
-                            c = '\b';
-			    break;
-                        case 'n':
-                            c = '\n';
-			    break;
-                        case 'r':
-                            c = '\r';
-			    break;
-                        case 't':
-                            c = '\t';
-			    break;
-			default:
-			    break;
-		    }
-		}
-		if (tl < (sizeof tokbuf) - 1) {
-		   *tp++ = c;
-		   tl++;
-		} else {
-		    rstring = True;
-		}
-	    }
-	    istring = True;
-	} else {
-
-	    /* Scan the next raw token */
-
-	    while (True) {
-		char c = *sp++;
-
-		if (c == EOS || isspace(c)) {
-		    *tp++ = EOS;
-		    break;
-		}
-		if (tl < (sizeof tokbuf) - 1) {
-		    *tp++ = c;
-		    tl++;
-		}
-	    }
-	}
-	*cp = --sp;			  /* Store end of scan pointer */
-
-	if (istring) {
-	    if (rstring) {
-#ifdef MEMMESSAGE
-                V printf("\nRunaway string: %s\n", tokbuf);
 #endif
-		evalstat = ATL_RUNSTRING;
-		return TokNull;
-	    }
-	    return TokString;
-	}
 
-	if (tokbuf[0] == EOS)
-	    return TokNull;
+static stackitem ptr_to_stackitem(const void *x) {
+    uint16 bytes[2];
 
-	/* See if token is a comment to end of line character.	If so, discard
-	   the rest of the line and return null for this token request. */
-
-        if (strcmp(tokbuf, "\\") == 0) {
-	    while (*sp != EOS)
-		sp++;
-	    *cp = sp;
-	    return TokNull;
-	}
-
-	/* See if this token is a comment open delimiter.  If so, set to
-	   ignore all characters until the matching comment close delimiter. */
-
-        if (strcmp(tokbuf, "(") == 0) {
-	    while (*sp != EOS) {
-                if (*sp == ')')
-		    break;
-		sp++;
-	    }
-            if (*sp == ')') {
-		sp++;
-		continue;
-	    }
-	    atl_comment = Truth;
-	    *cp = sp;
-	    return TokNull;
-	}
-
-	/* See if the token is a number. */
-
-        if (isdigit(tokbuf[0]) || tokbuf[0] == '-') {
-	    //char tc;
-
-#ifdef OS2
-	    /* Compensate for error in OS/2 sscanf() library function */
-            if ((tokbuf[0] == '-') &&
-		!(isdigit(tokbuf[1]) ||
-                    (((tokbuf[1] == 'x') || (tokbuf[1] == 'X')) &&
-			isxdigit(tokbuf[2])))) {
-		return TokWord;
-	    }
-#endif /* OS2 */
-#ifdef USE_SSCANF
-            if (sscanf(tokbuf, "%li%c", &tokint, &tc) == 1)
-		return TokInt;
-#else
-        const char *tcp;
-    	tokint = strtoul(tokbuf, &tcp, 0);
-
-	    if (*tcp == 0) {
-	    	return TokInt;
-	    }
-#endif
-#ifdef REAL
-            if (sscanf(tokbuf, "%lf%c", &tokreal, &tc) == 1)
-		return TokReal;
-#endif
-	}
-	return TokWord;
-    }
+    MemCopy(bytes, x, 4);
+    // xap is big endian
+    return( ((int32) bytes[1])<<16) + bytes[0];
 }
 
 /*  LOOKUP  --	Look up token in the dictionary.  */
 
-static dictword *lookup(const char *tkname)
+static dictword *lookup(int word)
 {
     dictword *dw = dict;
 
-    while (dw != NULL) {
-	if (!(dw->wname[0] & WORDHIDDEN) &&
-	     (strcmp(dw->wname + 1, tkname) == 0)) {
 #ifdef WORDSUSED
-	    *(dw->wname) |= WORDUSED; /* Mark this word used */
+	dw->word_flags |= WORDUSED; /* Mark this word used */
 #endif
-	    break;
-	}
-	dw = dw->wnext;
-    }
+
     return dw;
 }
-
-/* Gag me with a spoon!  Does no compiler but Turbo support
-   #if defined(x) || defined(y) ?? */
-#ifdef EXPORT
-#define FgetspNeeded
-#endif
-#ifdef FILEIO
-#ifndef FgetspNeeded
-#define FgetspNeeded
-#endif
-#endif
-
-#ifdef FgetspNeeded
-
-/*  ATL_FGETSP	--  Portable database version of FGETS.  This reads the
-		    next line into a buffer a la fgets().  A line is
-		    delimited by either a carriage return or a line
-		    feed, optionally followed by the other character
-		    of the pair.  The string is always null
-		    terminated, and limited to the length specified - 1
-		    (excess characters on the line are discarded.
-		    The string is returned, or NULL if end of file is
-		    encountered and no characters were stored.	No end
-		    of line character is stored in the string buffer.
-		    */
-
-Exported char *atl_fgetsp(char *s, int n, FILE *stream)
-{
-	int i = 0, ch;
-
-	while (True) {
-	   ch = getc(stream);
-	   if (ch == EOF) {
-	      if (i == 0)
-		 return NULL;
-	      break;
-	   }
-           if (ch == '\r') {
-	      ch = getc(stream);
-              if (ch != '\n')
-		 V ungetc(ch, stream);
-	      break;
-	   }
-           if (ch == '\n') {
-	      ch = getc(stream);
-              if (ch != '\r')
-		 V ungetc(ch, stream);
-	      break;
-	   }
-	   if (i < (n - 1))
-	      s[i++] = ch;
-	}
-	s[i] = EOS;
-	return s;
-}
-#endif /* FgetspNeeded */
 
 /*  ATL_MEMSTAT  --  Print memory usage summary.  */
 
@@ -587,42 +226,6 @@ void atl_memstat(void)
 
 /*  Primitive implementing functions.  */
 
-/*  ENTER  --  Enter word in dictionary.  Given token for word's
-	       name and initial values for its attributes, returns
-	       the newly-allocated dictionary item. */
-
-static void enter(char *tkname)
-{
-    /* Allocate name buffer */
-    createword->wname = str_alloc(strlen(tkname) + 2);
-    createword->wname[0] = 0;	      /* Clear flags */
-    V strcpy(createword->wname + 1, tkname); /* Copy token to name buffer */
-    createword->wnext = dict;	      /* Chain rest of dictionary to word */
-    dict = createword;		      /* Put word at head of dictionary */
-}
-
-#ifdef Keyhit
-
-/*  KBQUIT  --	If this system allows detecting key presses, handle
-		the pause, resume, and quit protocol for the word
-		listing facilities.  */
-
-static Boolean kbquit()
-{
-    int key;
-
-    if ((key = Keyhit()) != 0) {
-        V printf("\nPress RETURN to stop, any other key to continue: ");
-	while ((key = Keyhit()) == 0) ;
-        if (key == '\r' || (key == '\n'))
-	    return True;
-    }
-    return False;
-}
-#endif /* Keyhit */
-
-/*  Primitive word definitions.  */
-
 #ifdef NOMEMCHECK
 #define Compiling
 #else
@@ -639,6 +242,7 @@ prim P_plus(void)			      /* Add two numbers */
     Pop;
 }
 
+#if 0
 prim P_minus(void)			      /* Subtract two numbers */
 {
     Sl(2);
@@ -869,26 +473,6 @@ prim P_0lss(void)			      /* Less than zero ? */
 
 /*  Storage allocation (heap) primitives  */
 
-#define stackitem_to_ptr(item, datatype) ( (datatype*) ((size_t) item) )
-
-#define stackitem_to_stackitem_ptr(x) stackitem_to_ptr(x, stackitem)
-
-static stackitem * ptr_to_stackitem_ptr(void * x) {
-    return (stackitem*) x;
-}
-
-static rstackitem stackitem_to_rstackitem(stackitem x) {
-    return ((rstackitem)NULL)+x;
-}
-
-static stackitem ptr_to_stackitem(const void *x) {
-    uint16 bytes[2];
- 
-    memcpy(bytes, x, 4);
-    // xap is big endian
-    return( ((int32) bytes[1])<<16) + bytes[0];
-}
-
 prim P_here(void)			      /* Push current heap address */
 {
     So(1);
@@ -995,11 +579,6 @@ Exported void P_create(void)	      /* Create new word */
     hptr += Dictwordl;		      /* Allocate heap space for word */
 }
 
-prim P_forget(void) 		      /* Forget word */
-{
-    forgetpend = True;		      /* Mark forget pending */
-}
-
 prim P_variable(void)		      /* Declare variable */
 {
     P_create(); 		      /* Create dictionary item */
@@ -1103,153 +682,6 @@ prim P_array(void)			      /* Declare array */
     Npop(nsubs + 2);
 }
 #endif /* ARRAY */
-
-/*  String primitives  */
-
-#ifdef STRING
-
-prim P_strlit(void) 		      /* Push address of string literal */
-{
-    So(1);
-    Push = ptr_to_stackitem (((char *) ip) + 1);
-#ifdef TRACE
-    if (atl_trace) {
-        V printf("\"%s\" ", (((char *) ip) + 1));
-    }
-#endif /* TRACE */
-    Skipstring; 		      /* Advance IP past it */
-}
-
-prim P_string(void) 		      /* Create string buffer */
-{
-    Sl(1);
-    Ho((S0 + 1 + sizeof(stackitem)) / sizeof(stackitem));
-    P_create(); 		      /* Create variable */
-    /* Allocate storage for string */
-    hptr += (S0 + 1 + sizeof(stackitem)) / sizeof(stackitem);
-    Pop;
-}
-
-prim P_strcpy(void) 		      /* Copy string to address on stack */
-{
-    Sl(2);
-    Hpc(S0);
-    Hpc(S1);
-    V strcpy(stackitem_to_ptr(S0, char*), stackitem_to_ptr(S1, char*));
-    Pop2;
-}
-
-prim P_strcat(void) 		      /* Append string to address on stack */
-{
-    Sl(2);
-    Hpc(S0);
-    Hpc(S1);
-    V strcat((char *) S0, (char *) S1);
-    Pop2;
-}
-
-prim P_strlen(void) 		      /* Take length of string on stack top */
-{
-    Sl(1);
-    Hpc(S0);
-    S0 = strlen((char *) S0);
-}
-
-prim P_strcmp(void) 		      /* Compare top two strings on stack */
-{
-    int i;
-
-    Sl(2);
-    Hpc(S0);
-    Hpc(S1);
-    i = strcmp((char *) S1, (char *) S0);
-    S1 = (i == 0) ? 0L : ((i > 0) ? 1L : -1L);
-    Pop;
-}
-
-prim P_strchar(void)		      /* Find character in string */
-{
-    Sl(2);
-    Hpc(S0);
-    Hpc(S1);
-    S1 = (stackitem) strchr((char *) S1, *((char *) S0));
-    Pop;
-}
-
-prim P_substr(void) 		      /* Extract and store substring */
-{				      /* source start length/-1 dest -- */
-    long sl, sn;
-    char *ss, *sp, *se, *ds;
-
-    Sl(4);
-    Hpc(S0);
-    Hpc(S3);
-    sl = strlen(ss = ((char *) S3));
-    se = ss + sl;
-    sp = ((char *) S3) + S2;
-    if ((sn = S1) < 0)
-	sn = 999999L;
-    ds = (char *) S0;
-    while (sn-- && (sp < se))
-	*ds++ = *sp++;
-    *ds++ = EOS;
-    Npop(4);
-}
-
-prim P_strform(void)		      /* Format integer using sprintf() */
-{                                     /* value "%ld" str -- */
-    Sl(2);
-    Hpc(S0);
-    Hpc(S1);
-    V sprintf((char *) S0, (char *) S1, S2);
-    Npop(3);
-}
-
-#ifdef REAL
-prim P_fstrform(void)		      /* Format real using sprintf() */
-{                                     /* rvalue "%6.2f" str -- */
-    Sl(4);
-    Hpc(S0);
-    Hpc(S1);
-    V sprintf((char *) S0, (char *) S1, REAL1);
-    Npop(4);
-}
-#endif /* REAL */
-
-prim P_strint(void) 		      /* String to integer */
-{				      /* str -- endptr value */
-    stackitem is;
-    char *eptr;
-
-    Sl(1);
-    So(1);
-    Hpc(S0);
-    is = strtoul((char *) S0, &eptr, 0);
-    S0 = (stackitem) eptr;
-    Push = is;
-}
-
-#ifdef REAL
-prim P_strreal(void)		      /* String to real */
-{				      /* str -- endptr value */
-    int i;
-    union {
-    	atl_real fs;
-	stackitem fss[Realsize];
-    } fsu;
-    char *eptr;
-
-    Sl(1);
-    So(2);
-    Hpc(S0);
-    fsu.fs = strtod((char *) S0, &eptr);
-    S0 = (stackitem) eptr;
-    for (i = 0; i < Realsize; i++) {
-    	Push = fsu.fss[i];
-    }
-}
-#endif /* REAL */
-#endif /* STRING */
 
 /*  Floating point primitives  */
 
@@ -1487,278 +919,6 @@ prim P_tan(void)			      /* Tangent */
 #endif /* MATH */
 #endif /* REAL */
 
-/*  Console I/O primitives  */
-
-#ifdef CONIO
-
-prim P_dot(void)			      /* Print top of stack, pop it */
-{
-    Sl(1);
-    V printf(base == 16 ? "%lX" : "%ld ", S0);
-    Pop;
-}
-
-prim P_question(void)		      /* Print value at address */
-{
-    Sl(1);
-    Hpc(S0);
-    V printf(base == 16 ? "%lX" : "%ld ", *(stackitem_to_stackitem_ptr(S0)));
-    Pop;
-}
-
-prim P_cr(void)			      /* Carriage return */
-{
-    V printf("\n");
-    fflush(stdout);
-}
-
-prim P_dots(void)			      /* Print entire contents of stack */
-{
-    stackitem *tsp;
-
-    V printf("Stack: ");
-    if (stk == stackbot)
-        V printf("Empty.");
-    else {
-	for (tsp = stack; tsp < stk; tsp++) {
-            V printf(base == 16 ? "%lX" : "%ld ", *tsp);
-	}
-    }
-}
-
-prim P_dotquote(void)		      /* Print literal string that follows */
-{
-    Compiling;
-    stringlit = True;		      /* Set string literal expected */
-    Compconst(s_dotparen);	      /* Compile .( word */
-}
-
-prim P_dotparen(void)		      /* Print literal string that follows */
-{
-    if (ip == NULL) {		      /* If interpreting */
-	stringlit = True;	      /* Set to print next string constant */
-    } else {			      /* Otherwise, */
-        V printf("%s", ((char *) ip) + 1); /* print string literal
-					 in in-line code. */
-	Skipstring;		      /* And advance IP past it */
-    }
-}
-
-prim P_type(void)			      /* Print string pointed to by stack */
-{
-    Sl(1);
-    Hpc(S0);
-    V printf("%s", (char *) S0);
-    Pop;
-}
-
-prim P_words(void)			      /* List words */
-{
-#ifndef Keyhit
-    int key = 0;
-#endif
-    dictword *dw = dict;
-
-    while (dw != NULL) {
-
-        V printf("\n%s", dw->wname + 1);
-	dw = dw->wnext;
-#ifdef Keyhit
-	if (kbquit()) {
-	    break;
-	}
-#else
-        /* If this system can't trap keystrokes, just stop the WORDS
-	   listing after 20 words. */
-	if (++key >= 20)
-	    break;
-#endif
-    }
-    V printf("\n");
-}
-#endif /* CONIO */
-
-#ifdef FILEIO
-
-prim P_file(void)			      /* Declare file */
-{
-    Ho(2);
-    P_create(); 		      /* Create variable */
-    Hstore = FileSent;		      /* Store file sentinel */
-    Hstore = 0; 		      /* Mark file not open */
-}
-
-prim P_fopen(void)			      /* Open file: fname fmodes fd -- flag */
-{
-    FILE *fd;
-    stackitem stat;
-
-    Sl(3);
-    Hpc(S2);
-    Hpc(S0);
-    Isfile(S0);
-    fd = fopen((char *) S2, fopenmodes[S1]);
-    if (fd == NULL) {
-	stat = Falsity;
-    } else {
-	*((stackitem_to_stackitem_ptr(S0)) + 1) = (stackitem) fd;
-	stat = Truth;
-    }
-    Pop2;
-    S0 = stat;
-}
-
-prim P_fclose(void) 		      /* Close file: fd -- */
-{
-    Sl(1);
-    Hpc(S0);
-    Isfile(S0);
-    Isopen(S0);
-    V fclose(FileD(S0));
-    *((stackitem_to_stackitem_ptr(S0)) + 1) = (stackitem) NULL;
-    Pop;
-}
-
-prim P_fdelete(void)		      /* Delete file: fname -- flag */
-{
-    Sl(1);
-    Hpc(S0);
-    S0 = (unlink((char *) S0) == 0) ? Truth : Falsity;
-}
-
-prim P_fgetline(void)		      /* Get line: fd string -- flag */
-{
-    Sl(2);
-    Hpc(S0);
-    Isfile(S1);
-    Isopen(S1);
-    if (atl_fgetsp((char *) S0, 132, FileD(S1)) == NULL) {
-	S1 = Falsity;
-    } else {
-	S1 = Truth;
-    }
-    Pop;
-}
-
-prim P_fputline(void)		      /* Put line: string fd -- flag */
-{
-    Sl(2);
-    Hpc(S1);
-    Isfile(S0);
-    Isopen(S0);
-    if (fputs((char *) S1, FileD(S0)) == EOF) {
-	S1 = Falsity;
-    } else {
-        S1 = putc('\n', FileD(S0)) == EOF ? Falsity : Truth;
-    }
-    Pop;
-}
-
-prim P_fread(void)			      /* File read: fd len buf -- length */
-{
-    Sl(3);
-    Hpc(S0);
-    Isfile(S2);
-    Isopen(S2);
-    S2 = fread((char *) S0, 1, ((int) S1), FileD(S2));
-    Pop2;
-}
-
-prim P_fwrite(void) 		      /* File write: len buf fd -- length */
-{
-    Sl(3);
-    Hpc(S1);
-    Isfile(S0);
-    Isopen(S0);
-    S2 = fwrite((char *) S1, 1, ((int) S2), FileD(S0));
-    Pop2;
-}
-
-prim P_fgetc(void)			      /* File get character: fd -- char */
-{
-    Sl(1);
-    Isfile(S0);
-    Isopen(S0);
-    S0 = getc(FileD(S0));	      /* Returns -1 if EOF hit */
-}
-
-prim P_fputc(void)			      /* File put character: char fd -- stat */
-{
-    Sl(2);
-    Isfile(S0);
-    Isopen(S0);
-    S1 = putc((char) S1, FileD(S0));
-    Pop;
-}
-
-prim P_ftell(void)			      /* Return file position:	fd -- pos */
-{
-    Sl(1);
-    Isfile(S0);
-    Isopen(S0);
-    S0 = (stackitem) ftell(FileD(S0));
-}
-
-prim P_fseek(void)			      /* Seek file:  offset base fd -- */
-{
-    Sl(3);
-    Isfile(S0);
-    Isopen(S0);
-    V fseek(FileD(S0), (long) S2, (int) S1);
-    Npop(3);
-}
-
-prim P_fload(void)			      /* Load source file:  fd -- evalstat */
-{
-    int estat;
-    FILE *fd;
-
-    Sl(1);
-    Isfile(S0);
-    Isopen(S0);
-    fd = FileD(S0);
-    Pop;
-    estat = atl_load(fd);
-    So(1);
-    Push = estat;
-}
-#endif /* FILEIO */
-
-#ifdef EVALUATE
-
-prim P_evaluate(void)
-{				      /* string -- status */
-    int es = ATL_SNORM;
-    atl_statemark mk;
-    atl_int scomm = atl_comment;      /* Stack comment pending state */
-    dictword **sip = ip;	      /* Stack instruction pointer */
-    const char *sinstr = instream;	      /* Stack input stream */
-    char *estring;
-
-    Sl(1);
-    Hpc(S0);
-    estring = (char *) S0;	      /* Get string to evaluate */
-    Pop;			      /* Pop so it sees arguments below it */
-    atl_mark(&mk);		      /* Mark in case of error */
-    ip = NULL;			      /* Fool atl_eval into interp state */
-    if ((es = atl_eval(estring)) != ATL_SNORM) {
-	atl_unwind(&mk);
-    }
-    /* If there were no other errors, check for a runaway comment.  If
-       we ended the file in comment-ignore mode, set the runaway comment
-       error status and unwind the file.  */
-    if ((es == ATL_SNORM) && (atl_comment != 0)) {
-	es = ATL_RUNCOMM;
-	atl_unwind(&mk);
-    }
-    atl_comment = scomm;	      /* Unstack comment pending status */
-    ip = sip;			      /* Unstack instruction pointer */
-    instream = sinstr;		      /* Unstack input stream */
-    So(1);
-    Push = es;			      /* Return eval status on top of stack */
-}
-#endif /* EVALUATE */
-
 /*  Stack mechanics  */
 
 prim P_depth(void)			      /* Push stack depth */
@@ -1769,10 +929,12 @@ prim P_depth(void)			      /* Push stack depth */
     Push = s;
 }
 
+#endif
 prim P_clear(void)			      /* Clear stack */
 {
     stk = stack;
 }
+#if 0
 
 prim P_dup(void)			      /* Duplicate top of stack */
 {
@@ -1997,6 +1159,7 @@ prim P_2at(void)			      /* Fetch double value from address */
 
 /*  Data transfer primitives  */
 
+#endif
 prim P_dolit(void)			      /* Push instruction stream literal */
 {
     So(1);
@@ -2008,6 +1171,7 @@ prim P_dolit(void)			      /* Push instruction stream literal */
     Push = ptr_to_stackitem(*ip++);	      /* Push the next datum from the
 					 instruction stream. */
 }
+#if 0
 
 /*  Control flow primitives  */
 
@@ -2285,6 +1449,7 @@ prim P_j(void)			      /* Obtain next-innermost loop index */
     Push = ptr_to_stackitem(rstk[-4]);      /* It's the 4th item on return stack */
 }
 
+#endif
 prim P_quit(void)			      /* Terminate execution */
 {
     rstk = rstack;		      /* Clear return stack */
@@ -2293,6 +1458,7 @@ prim P_quit(void)			      /* Terminate execution */
 #endif
     ip = NULL;			      /* Stop execution of current word */
 }
+#if 0
 
 #ifdef SLEEP
 prim P_sleep() // microsec ---
@@ -2310,11 +1476,13 @@ prim P_longsleep() // sec ---
 }
 #endif
 
+#endif
 prim P_abort(void)			      /* Abort, clearing data stack */
 {
     P_clear();			      /* Clear the data stack */
     P_quit();			      /* Shut down execution */
 }
+#if 0
 
 prim P_abortq(void) 		      /* Abort, printing message */
 {
@@ -2454,7 +1622,7 @@ prim P_tick(void)			      /* Take address of next word */
        report an error.  Since we can't call back to the
        calling program for more input, we're stuck. */
 
-    i = token(&instream);	      /* Scan for next token */
+    i = token();	      /* Scan for next token */
     if (i != TokNull) {
 	if (i == TokWord) {
 	    dictword *di;
@@ -2515,124 +1683,6 @@ prim P_state(void)			      /* Get state of system */
 }
 
 /*  Definition field access primitives	*/
-
-#ifdef DEFFIELDS
-
-prim P_find(void)			      /* Look up word in dictionary */
-{
-    dictword *dw;
-
-    Sl(1);
-    So(1);
-    Hpc(S0);
-    V strcpy(tokbuf, (char *) S0);    /* Use built-in token buffer... */
-    dw = lookup(tokbuf);              /* So ucase() in lookup() doesn't wipe */
-				      /* the token on the stack */
-    if (dw != NULL) {
-	S0 = (stackitem) dw;
-	/* Push immediate flag */
-	Push = (dw->wname[0] & IMMEDIATE) ? 1 : -1;
-    } else {
-	Push = 0;
-    }
-}
-
-#define DfOff(fld)  (((char *) &(dict->fld)) - ((char *) dict))
-
-prim P_toname(void) 		      /* Find name field from compile addr */
-{
-    Sl(1);
-    S0 += DfOff(wname);
-}
-
-prim P_tolink(void) 		      /* Find link field from compile addr */
-{
-if (DfOff(wnext) != 0) V printf("\n>LINK Foulup--wnext is not at zero!\n");
-/*  Sl(1);
-    S0 += DfOff(wnext);  */	      /* Null operation.  Wnext is first */
-}
-
-prim P_frombody(void)		      /* Get compile address from body */
-{
-    Sl(1);
-    S0 -= Dictwordl * sizeof(stackitem);
-}
-
-prim P_fromname(void)		      /* Get compile address from name */
-{
-    Sl(1);
-    S0 -= DfOff(wname);
-}
-
-prim P_fromlink(void)		      /* Get compile address from link */
-{
-if (DfOff(wnext) != 0) V printf("\nLINK> Foulup--wnext is not at zero!\n");
-/*  Sl(1);
-    S0 -= DfOff(wnext);  */	      /* Null operation.  Wnext is first */
-}
-
-#undef DfOff
-
-#define DfTran(from,to) (((char *) &(dict->to)) - ((char *) &(dict->from)))
-
-prim P_nametolink(void)		      /* Get from name field to link */
-{
-    char *from, *to;
-
-    Sl(1);
-    /*
-    S0 -= DfTran(wnext, wname);
-    */
-    from = (char *) &(dict->wnext);
-    to = (char *) &(dict->wname);
-    S0 -= (to - from);
-}
-
-prim P_linktoname(void)		      /* Get from link field to name */
-{
-    char *from, *to;
-
-    Sl(1);
-    /*
-    S0 += DfTran(wnext, wname);
-    */
-    from = (char *) &(dict->wnext);
-    to = (char *) &(dict->wname);
-    S0 += (to - from);
-}
-
-prim P_fetchname(void)		      /* Copy word name to string buffer */
-{
-    Sl(2);			      /* nfa string -- */
-    Hpc(S0);
-    Hpc(S1);
-    /* Since the name buffers aren't in the system heap, but
-       rather are separately allocated with alloc(), we can't
-       check the name pointer references.  But, hey, if the user's
-       futzing with word dictionary items on the heap in the first
-       place, there's a billion other ways to bring us down at
-       his command. */
-    V strcpy((char *) S0, *((char **) S1) + 1);
-    Pop2;
-}
-
-prim P_storename(void)		      /* Store string buffer in word name */
-{
-    char tflags;
-    char *cp;
-
-    Sl(2);			      /* string nfa -- */
-    Hpc(S0);			      /* See comments in P_fetchname above */
-    Hpc(S1);			      /* checking name pointers */
-    tflags = **((char **) S0);
-    free(*((char **) S0));
-    *((char **) S0) = cp = str_alloc((strlen((char *) S1) + 2));
-    V strcpy(cp + 1, (char *) S1);
-    *cp = tflags;
-    Pop2;
-}
-
-#endif /* DEFFIELDS */
 
 #ifdef SYSTEM
 prim P_system(void)
@@ -2767,9 +1817,14 @@ prim P_fwdresolve(void)		      /* Emit forward jump offset */
 }
 
 #endif /* COMPILERW */
+#endif
 
-/*  Table of primitive words  */
+/* Dictionary */
+#include "atlast_verbs.h"
 
+Exported dictword dict[F_xxx];
+
+#if 0
 static struct primfcn primt[] = {
     {"0+", P_plus},
     {"0-", P_minus},
@@ -2852,26 +1907,6 @@ static struct primfcn primt[] = {
 #ifdef ARRAY
     {"0ARRAY", P_array},
 #endif
-
-#ifdef STRING
-    {"0(STRLIT)", P_strlit},
-    {"0STRING", P_string},
-    {"0STRCPY", P_strcpy},
-    {"0S!", P_strcpy},
-    {"0STRCAT", P_strcat},
-    {"0S+", P_strcat},
-    {"0STRLEN", P_strlen},
-    {"0STRCMP", P_strcmp},
-    {"0STRCHAR", P_strchar},
-    {"0SUBSTR", P_substr},
-    {"0COMPARE", P_strcmp},
-    {"0STRFORM", P_strform},
-#ifdef REAL
-    {"0FSTRFORM", P_fstrform},
-#endif
-    {"0STRINT", P_strint},
-    {"0STRREAL", P_strreal},
-#endif /* STRING */
 
 #ifdef REAL
     {"0(FLIT)", P_flit},
@@ -3029,59 +2064,7 @@ static struct primfcn primt[] = {
 	
     {NULL, (codeptr) 0}
 };
-
-/*  ATL_PRIMDEF  --  Initialise the dictionary with the built-in primitive
-		     words.  To save the memory overhead of separately
-		     allocated word items, we get one buffer for all
-		     the items and link them internally within the buffer. */
-
-void atl_primdef(primfcn *pt)
-{
-    struct primfcn *pf = pt;
-    dictword *nw;
-    int i, n = 0;
-#ifdef READONLYSTRINGS
-    unsigned int nltotal;
-    char *dynames, *cp;
-#endif /* READONLYSTRINGS */
-
-    /* Count the number of definitions in the table. */
-
-    while (pf->pname != NULL) {
-	n++;
-	pf++;
-    }
-
-#ifdef READONLYSTRINGS
-    nltotal = n;
-    for (i = 0; i < n; i++) {
-	nltotal += strlen(pt[i].pname);
-    }
-    cp = dynames = str_alloc(nltotal);
-    for (i = 0; i < n; i++) {
-	strcpy(cp, pt[i].pname);
-	cp += strlen(cp) + 1;
-    }
-    cp = dynames;
-#endif /* READONLYSTRINGS */
-
-    nw = (dictword *) alloc(n * sizeof(dictword));
-
-    nw[n - 1].wnext = dict;
-    dict = nw;
-    for (i = 0; i < n; i++) {
-#ifdef READONLYSTRINGS
-    	nw->wname = cp;
-	cp += strlen(cp) + 1;
-#endif /* READONLYSTRINGS */
-	nw->wcode = pt->pcode;
-	if (i != (n - 1)) {
-	    nw->wnext = nw + 1;
-	}
-	nw++;
-	pt++;
-    }
-}
+#endif
 
 #ifdef WALKBACK
 
@@ -3113,7 +2096,7 @@ static void trouble(const char *kind)
     pwalkback();
 #endif /* WALKBACK */
     P_abort();			      /* Abort */
-    atl_comment = state = Falsity;    /* Reset all interpretation state */
+    state = Falsity;    /* Reset all interpretation state */
     forgetpend = defpend = stringlit =
 	tickpend = ctickpend = False;
 }
@@ -3130,7 +2113,7 @@ void atl_error(const char *kind)
 
 /*  STAKOVER  --  Recover from stack overflow.	*/
 
-Exported void stakover()
+Exported void stakover(void)
 {
     trouble("Stack overflow");
     evalstat = ATL_STACKOVER;
@@ -3138,7 +2121,7 @@ Exported void stakover()
 
 /*  STAKUNDER  --  Recover from stack underflow.  */
 
-Exported void stakunder()
+Exported void stakunder(void)
 {
     trouble("Stack underflow");
     evalstat = ATL_STACKUNDER;
@@ -3146,7 +2129,7 @@ Exported void stakunder()
 
 /*  RSTAKOVER  --  Recover from return stack overflow.	*/
 
-Exported void rstakover()
+Exported void rstakover(void)
 {
     trouble("Return stack overflow");
     evalstat = ATL_RSTACKOVER;
@@ -3154,7 +2137,7 @@ Exported void rstakover()
 
 /*  RSTAKUNDER	--  Recover from return stack underflow.  */
 
-Exported void rstakunder()
+Exported void rstakunder(void)
 {
     trouble("Return stack underflow");
     evalstat = ATL_RSTACKUNDER;
@@ -3165,7 +2148,7 @@ Exported void rstakunder()
 		  the user to do this manually with FORGET or
 		  some such. */
 
-Exported void heapover()
+Exported void heapover(void)
 {
     trouble("Heap overflow");
     evalstat = ATL_HEAPOVER;
@@ -3173,7 +2156,7 @@ Exported void heapover()
 
 /*  BADPOINTER	--  Abort if bad pointer reference detected.  */
 
-Exported void badpointer()
+Exported void badpointer(void)
 {
     trouble("Bad pointer");
     evalstat = ATL_BADPOINTER;
@@ -3181,7 +2164,8 @@ Exported void badpointer()
 
 /*  NOTCOMP  --  Compiler word used outside definition.  */
 
-static void notcomp()
+#if 0
+static void notcomp(void)
 {
     trouble("Compiler word outside definition");
     evalstat = ATL_NOTINDEF;
@@ -3189,11 +2173,12 @@ static void notcomp()
 
 /*  DIVZERO  --  Attempt to divide by zero.  */
 
-static void divzero()
+static void divzero(void)
 {
     trouble("Divide by zero");
     evalstat = ATL_DIVZERO;
 }
+#endif
 
 #endif /* !NOMEMCHECK */
 
@@ -3230,94 +2215,29 @@ static void exword(dictword *wp)
     curword = NULL;
 }
 
-/*  ATL_INIT  --  Initialise the ATLAST system.  The dynamic storage areas
-		  are allocated unless the caller has preallocated buffers
-		  for them and stored the addresses into the respective
-		  pointers.  In either case, the storage management
-		  pointers are initialised to the correct addresses.  If
-                  the caller preallocates the buffers, it's up to him to
-		  ensure that the length allocated agrees with the lengths
-		  given by the atl_... cells.  */
-
 void atl_init(void)
 {
-    if (dict == NULL) {
-	atl_primdef(primt);	      /* Define primitive words */
-	dictprot = dict;	      /* Set protected mark in dictionary */
+	MemSet(dict, 0, sizeof(dict));
 
-	/* Look up compiler-referenced words in the new dictionary and
-	   save their compile addresses in static variables. */
+	dict[F_lit].wcode = P_dolit;
+	dict[F_plus].wcode = P_plus;
 
-    //TODO check 'cell' is zero and do something
-#define Cconst(cell, name)  cell = ptr_to_stackitem(lookup(name))
-        Cconst(s_exit, "EXIT");
-        Cconst(s_lit, "(LIT)");
-        Cconst(s_flit, "(FLIT)");
-        Cconst(s_strlit, "(STRLIT)");
-        Cconst(s_dotparen, ".(");
-        Cconst(s_qbranch, "?BRANCH");
-        Cconst(s_branch, "BRANCH");
-        Cconst(s_xdo, "(XDO)");
-        Cconst(s_xqdo, "(X?DO)");
-        Cconst(s_xloop, "(XLOOP)");
-        Cconst(s_pxloop, "(+XLOOP)");
-        Cconst(s_abortq, "ABORT\"");
-#undef Cconst
-
-	if (stack == NULL) {	      /* Allocate stack if needed */
-	    stack = (stackitem *)
-		alloc((atl_stklen) * sizeof(stackitem));
-	}
 	stk = stackbot = stack;
 #ifdef MEMSTAT
 	stackmax = stack;
 #endif
 	stacktop = stack + atl_stklen;
-	if (rstack == NULL) {	      /* Allocate return stack if needed */
-	    rstack = (dictword ***)
-		alloc( atl_rstklen *
-		sizeof(dictword **));
-	}
 	rstk = rstackbot = rstack;
 #ifdef MEMSTAT
 	rstackmax = rstack;
 #endif
 	rstacktop = rstack + atl_rstklen;
 #ifdef WALKBACK
-	if (wback == NULL) {
-	    wback = (dictword **) alloc((atl_rstklen) *
-				    sizeof(dictword *));
-	}
 	wbptr = wback;
 #endif
-	if (heap == NULL) {
 
-	    /* The temporary string buffers are placed at the start of the
-	       heap, which permits us to pointer-check pointers into them
-	       as within the heap extents.  Hence, the size of the buffer
-	       we acquire for the heap is the sum of the heap and temporary
-	       string requests. */
+	heapbot = heap;
 
-	    atl_int i;
-	    char *cp;
-
-	    /* Force length of temporary strings to even number of
-	       stackitems. */
-	    atl_ltempstr += sizeof(stackitem) -
-		(atl_ltempstr % sizeof(stackitem));
-	    cp = alloc( atl_heaplen * sizeof(stackitem) +
-			atl_ntempstr * atl_ltempstr);
-	    heapbot = (stackitem *) cp;
-	    strbuf = (char **) alloc(( atl_ntempstr) *
-				sizeof(char *));
-	    for (i = 0; i < atl_ntempstr; i++) {
-		strbuf[i] = cp;
-		cp += atl_ltempstr;
-	    }
-	    cstrbuf = 0;
-	    heap = (stackitem *) cp;  /* Allocatable heap starts after
-					 the temporary strings */
-	}
 	/* The system state word is kept in the first word of the heap
            so that pointer checking doesn't bounce references to it.
 	   When creating the heap, we preallocate this word and initialise
@@ -3328,53 +2248,15 @@ void atl_init(void)
 	heapmax = hptr;
 #endif
 	heaptop = heap + atl_heaplen;
-
-	/* Now that dynamic memory is up and running, allocate constants
-	   and variables built into the system.  */
-
-#ifdef FILEIO
-	{   static struct {
-		char *sfn;
-		FILE *sfd;
-	    } stdfiles[] = {
-                {"STDIN", NULL},
-                {"STDOUT", NULL},
-                {"STDERR", NULL}
-	    };
-	    size_t i;
-	    dictword *dw;
-
-    	    /* On some systems stdin, stdout, and stderr aren't
-	       constants which can appear in an initialisation.
-	       So, we initialise them at runtime here. */
-	       
-    	    stdfiles[0].sfd = stdin;
-	    stdfiles[1].sfd = stdout;
-	    stdfiles[2].sfd = stderr;
-	    
-	    for (i = 0; i < ELEMENTS(stdfiles); i++) {
-		if ((dw = atl_vardef(stdfiles[i].sfn,
-			2 * sizeof(stackitem))) != NULL) {
-		    stackitem *si = atl_body(dw);
-		    *si++ = FileSent;
-		    *si = (stackitem) stdfiles[i].sfd;
-		}
-	    }
-	}
-#endif /* FILEIO */
-	dictprot = dict;	      /* Protect all standard words */
-    }
 }
 
 /*  ATL_LOOKUP	--  Look up a word in the dictionary.  Returns its
                     word item if found or NULL if the word isn't
 		    in the dictionary. */
 
-dictword *atl_lookup(const char *name)
+dictword *atl_lookup(int word)
 {
-    V strcpy(tokbuf, name);	      /* Use built-in token buffer... */
-    ucase(tokbuf);                    /* so ucase() doesn't wreck arg string */
-    return lookup(tokbuf);	      /* Now use normal lookup() on it */
+    return lookup(word);
 }
 
 /*  ATL_BODY  --  Returns the address of the body of a word, given
@@ -3416,42 +2298,6 @@ int atl_exec(dictword *dw)
     return restat;
 }
 
-/*  ATL_VARDEF  --  Define a variable word.  Called with the word's
-		    name and the number of bytes of storage to allocate
-		    for its body.  All words defined with atl_vardef()
-		    have the standard variable action of pushing their
-		    body address on the stack when invoked.  Returns
-		    the dictionary item for the new word, or NULL if
-		    the heap overflows. */
-
-dictword *atl_vardef(const char *name, int size)
-{
-    dictword *di;
-    int isize = (size + (sizeof(stackitem) - 1)) / sizeof(stackitem);
-
-#undef Memerrs
-#define Memerrs NULL
-    evalstat = ATL_SNORM;
-    Ho(Dictwordl + isize);
-#undef Memerrs
-#define Memerrs
-    if (evalstat != ATL_SNORM)	      /* Did the heap overflow */
-	return NULL;		      /* Yes.  Return NULL */
-    createword = (dictword *) hptr;   /* Develop address of word */
-    createword->wcode = P_var;	      /* Store default code */
-    hptr += Dictwordl;		      /* Allocate heap space for word */
-    while (isize > 0) {
-	Hstore = 0;		      /* Allocate heap area and clear it */
-	isize--;
-    }
-    V strcpy(tokbuf, name);	      /* Use built-in token buffer... */
-    ucase(tokbuf);                    /* so ucase() doesn't wreck arg string */
-    enter(tokbuf);		      /* Make dictionary entry for it */
-    di = createword;		      /* Save word address */
-    createword = NULL;		      /* Mark no word underway */
-    return di;			      /* Return new word */
-}
-
 /*  ATL_MARK  --  Mark current state of the system.  */
 
 void atl_mark(atl_statemark *mp)
@@ -3459,35 +2305,15 @@ void atl_mark(atl_statemark *mp)
     mp->mstack = stk;		      /* Save stack position */
     mp->mheap = hptr;		      /* Save heap allocation marker */
     mp->mrstack = rstk; 	      /* Set return stack pointer */
-    mp->mdict = dict;		      /* Save last item in dictionary */
 }
 
 /*  ATL_UNWIND	--  Restore system state to previously saved state.  */
 
 void atl_unwind(atl_statemark *mp)
 {
-
-    /* If atl_mark() was called before the system was initialised, and
-       we've initialised since, we cannot unwind.  Just ignore the
-       unwind request.	The user must manually atl_init before an
-       atl_mark() request is made. */
-
-    if (mp->mdict == NULL)	      /* Was mark made before atl_init ? */
-	return; 		      /* Yes.  Cannot unwind past init */
-
     stk = mp->mstack;		      /* Roll back stack allocation */
     hptr = mp->mheap;		      /* Reset heap state */
     rstk = mp->mrstack; 	      /* Reset the return stack */
-
-    /* To unwind the dictionary, we can't just reset the pointer,
-       we must walk back through the chain and release all the name
-       buffers attached to the items allocated after the mark was
-       made. */
-
-    while (dict != NULL && dict != dictprot && dict != mp->mdict) {
-	    free(dict->wname);	      /* Release name string for item */
-	    dict = dict->wnext;	      /* Link to previous item */
-    }
 }
 
 #ifdef BREAK
@@ -3505,93 +2331,23 @@ void atl_break(void)
 }
 #endif /* BREAK */
 
-/*  ATL_LOAD  --  Load a file into the system.	*/
+static TokenType token(void) {
+	int i = *instream;
 
-#ifndef XAP
-int atl_load(FILE *fp)
-{
-    int es = ATL_SNORM;
-    char s[134];
-    atl_statemark mk;
-    atl_int scomm = atl_comment;      /* Stack comment pending state */
-    dictword **sip = ip;	      /* Stack instruction pointer */
-    char *sinstr = instream;	      /* Stack input stream */
-    int lineno = 0;		      /* Current line number */
-
-    atl_errline = 0;		      /* Reset line number of error */
-    atl_mark(&mk);
-    ip = NULL;			      /* Fool atl_eval into interp state */
-    while (atl_fgetsp(s, 132, fp) != NULL) {
-	lineno++;
-	if ((es = atl_eval(s)) != ATL_SNORM) {
-	    atl_errline = lineno;     /* Save line number of error */
-	    atl_unwind(&mk);
-	    break;
+	if (i == TokInt) {
+		++instream;
+		tokint = *instream;
+		++instream;
 	}
-    }
-    /* If there were no other errors, check for a runaway comment.  If
-       we ended the file in comment-ignore mode, set the runaway comment
-       error status and unwind the file.  */
-    if ((es == ATL_SNORM) && (atl_comment == Truth)) {
-#ifdef MEMMESSAGE
-        V printf("\nRunaway `(' comment.\n");
-#endif
-	es = ATL_RUNCOMM;
-	atl_unwind(&mk);
-    }
-    atl_comment = scomm;	      /* Unstack comment pending status */
-    ip = sip;			      /* Unstack instruction pointer */
-    instream = sinstr;		      /* Unstack input stream */
-    return es;
-}
-#endif
 
-/*  ATL_PROLOGUE  --  Recognise and process prologue statement.
-		      Returns 1 if the statement was part of the
-		      prologue and 0 otherwise. */
-
-static int atl_prologue(const char *const sp)
-{
-    static struct {
-	const char *pname;
-	atl_int *pparam;
-    } proname[] = {
-        {"stack ", &atl_stklen},
-        {"rstack ", &atl_rstklen},
-        {"heap ", &atl_heaplen},
-        {"tempstrl ", &atl_ltempstr},
-        {"tempstrn ", &atl_ntempstr}
-    };
-
-    if (strncmp(sp, "\\ *", 3) == 0) {
-	const char *vp = sp + 3;
-    const char *ap;
-
-    // ucase removed so const strings not modified. words must be lowercase.
-    // READONLYSTRINGS was not honored here
-	//ucase(vp);
-    size_t i;
-	for (i = 0; i < ELEMENTS(proname); i++) {
-	    if (strncmp(vp, proname[i].pname,
-		    strlen(proname[i].pname)) == 0) {
-                if ((ap = strchr(vp, ' ')) != NULL) {
-                	*(proname[i].pparam) = strtoul(ap+1, NULL, 0);
-#ifdef PROLOGUEDEBUG
-V printf("Prologue set %sto %ld\n", proname[i].pname, *proname[i].pparam);
-#endif
-		    return 1;
-	       }
-	    }
-	}
-    }
-    return 0;
+	return i;
 }
 
 /*  ATL_EVAL  --  Evaluate a string containing ATLAST words.  */
 
-int atl_eval(const char *sp)
+int atl_eval(const int *sp)
 {
-    int i;
+    TokenType i;
 
 #undef Memerrs
 #define Memerrs evalstat
@@ -3600,145 +2356,14 @@ int atl_eval(const char *sp)
 #ifdef BREAK
     broken = False;		      /* Reset asynchronous break */
 #endif
-
-/* If automatic prologue processing is configured and we haven't yet
-   initialised, check if this is a prologue statement.	If so, execute
-   it.	Otherwise automatically initialise with the memory specifications
-   currently operative. */
-
-#ifdef PROLOGUE
-    if (dict == NULL) {
-	if (atl_prologue(sp))
-	   return evalstat;
-	atl_init();
-    }
-#endif /* PROLOGUE */
-
-    while ((evalstat == ATL_SNORM) && (i = token(&instream)) != TokNull) {
-	dictword *di;
+    
+    while ((evalstat == ATL_SNORM) && (i = token()) != TokNull) {
 
 	switch (i) {
-	    case TokWord:
-		if (forgetpend) {
-		    forgetpend = False;
-		    ucase(tokbuf);
-		    if ((di = lookup(tokbuf)) != NULL) {
-			dictword *dw = dict;
-
-			/* Pass 1.  Rip through the dictionary to make sure
-				    this word is not past the marker that
-				    guards against forgetting too much. */
-
-			while (dw != NULL) {
-			    if (dw == dictprot) {
-#ifdef MEMMESSAGE
-                                V printf("\nForget protected.\n");
-#endif
-				evalstat = ATL_FORGETPROT;
-				di = NULL;
-			    }
-			    if (strcmp(dw->wname + 1, tokbuf) == 0)
-				break;
-			    dw = dw->wnext;
-			}
-
-			/* Pass 2.  Walk back through the dictionary
-				    items until we encounter the target
-                                    of the FORGET.  Release each item's
-				    name buffer and dechain it from the
-				    dictionary list. */
-
-			if (di != NULL) {
-			    do {
-				dw = dict;// why would the name be null?
-				if (dw->wname != NULL) 
-				    free(dict->wname);
-				dict = dw->wnext;
-			    } while (dw != di);
-			    /* Finally, back the heap allocation pointer
-			       up to the start of the last item forgotten. */
-			    hptr = (stackitem *) di;
-			    /* Uhhhh, just one more thing.  If this word
-                               was defined with DOES>, there's a link to
-			       the method address hidden before its
-                               wnext field.  See if it's a DOES> by testing
-			       the wcode field for P_dodoes and, if so,
-			       back up the heap one more item. */
-			    if (di->wcode == (codeptr) P_dodoes) {
-#ifdef FORGETDEBUG
-V printf(" Forgetting DOES> word. ");
-#endif
-				hptr--;
-			    }
-			}
-		    } else {
-#ifdef MEMMESSAGE
-                        V printf(" '%s' undefined ", tokbuf);
-#endif
-			evalstat = ATL_UNDEFINED;
-		    }
-		} else if (tickpend) {
-		    tickpend = False;
-		    ucase(tokbuf);
-		    if ((di = lookup(tokbuf)) != NULL) {
-			So(1);
-			Push = ptr_to_stackitem(di); /* Push word compile address */
-		    } else {
-#ifdef MEMMESSAGE
-                        V printf(" '%s' undefined ", tokbuf);
-#endif
-			evalstat = ATL_UNDEFINED;
-		    }
-		} else if (defpend) {
-		    /* If a definition is pending, define the token and
-		       leave the address of the new word item created for
-		       it on the return stack. */
-		    defpend = False;
-		    ucase(tokbuf);
-		    if (atl_redef && (lookup(tokbuf) != NULL)) {
-                        // V printf("\n%s isn't unique.", tokbuf);
-                    }
-		    enter(tokbuf);
-		} else {
-		    di = lookup(tokbuf);
-		    if (di != NULL) {
-                        /* Test the state.  If we're interpreting, execute
-                           the word in all cases.  If we're compiling,
-			   compile the word unless it is a compiler word
-			   flagged for immediate execution by the
-			   presence of a space as the first character of
-			   its name in the dictionary entry. */
-			if (state &&
-			    (cbrackpend || ctickpend ||
-			     !(di->wname[0] & IMMEDIATE))) {
-			    if (ctickpend) {
-				/* If a compile-time tick preceded this
-				   word, compile a (lit) word to cause its
-				   address to be pushed at execution time. */
-				Ho(1);
-				Hstore = s_lit;
-				ctickpend = False;
-			    }
-			    cbrackpend = False;
-			    Ho(1);	  /* Reserve stack space */
-			    Hstore = ptr_to_stackitem(di);/* Compile word address */
-			} else {
-			    exword(di);   /* Execute word */
-			}
-		    } else {
-#ifdef MEMMESSAGE
-                        V printf(" '%s' undefined ", tokbuf);
-#endif
-			evalstat = ATL_UNDEFINED;
-			state = Falsity;
-		    }
-		}
-		break;
-
 	    case TokInt:
 		if (state) {
 		    Ho(2);
-		    Hstore = s_lit;   /* Push (lit) */
+		    Hstore = ptr_to_stackitem(lookup(F_lit));   /* Push (lit) */
 		    Hstore = tokint;  /* Compile actual literal */
 		} else {
 		    So(1);
@@ -3777,40 +2402,6 @@ V printf(" Forgetting DOES> word. ");
 		break;
 #endif /* REAL */
 
-#ifdef STRING
-	    case TokString:
-		if (stringlit) {
-		    stringlit = False;
-		    if (state) {
-			int l = (strlen(tokbuf) + 1 + sizeof(stackitem)) /
-				    sizeof(stackitem);
-			Ho(l);
-			*((char *) hptr) = l;  /* Store in-line skip length */
-			V strcpy(((char *) hptr) + 1, tokbuf);
-			hptr += l;
-		    } else {
-                        V printf("%s", tokbuf);
-		    }
-		} else {
-		    if (state) {
-			int l = (strlen(tokbuf) + 1 + sizeof(stackitem)) /
-				    sizeof(stackitem);
-			Ho(l + 1);
-			/* Compile string literal instruction, followed by
-			   in-line skip length and the string literal */
-			Hstore = s_strlit;
-			*((char *) hptr) = l;  /* Store in-line skip length */
-			V strcpy(((char *) hptr) + 1, tokbuf);
-			hptr += l;
-		    } else {
-			So(1);
-			V strcpy(strbuf[cstrbuf], tokbuf);
-			Push = (stackitem) strbuf[cstrbuf];
-			cstrbuf = (cstrbuf + 1) % ((int) atl_ntempstr);
-		    }
-		}
-		break;
-#endif /* STRING */
 	    default:
 //                V printf("\nUnknown token type %d\n", i);
 		break;
