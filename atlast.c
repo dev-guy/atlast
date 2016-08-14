@@ -33,7 +33,7 @@
 //#define SYSTEM			      /* System command function */
 //#define SLEEP
 //#ifndef NOMEMCHECK
-//#define TRACE			      /* Execution tracing */
+#define TRACE			      /* Execution tracing */
 //#define WALKBACK		      /* Walkback trace */
 //#define WORDSUSED		      /* Logging of words used and unused */
 //#endif /* NOMEMCHECK */
@@ -43,9 +43,12 @@
 #endif
 
 #define EXPORT
-#include "atldef.h"
 
 #include <mem.h>
+#include <fm_debug.h>
+
+#include "atldef.h"
+#include "atlast_verbs.h"
 
 /*  Data types	*/
 
@@ -123,9 +126,8 @@ Exported dictword ***rstackmax;       /* Return stack maximum excursion */
 Exported stackitem *heapmax;	      /* Heap maximum excursion */
 #endif
 
-//static char tokbuf[128];	      /* Token buffer */
-static const int *instream = NULL;	      /* Current input stream line */
-static long tokint;		      /* Scanned integer */
+static const int *instream;	      /* Current input stream line */
+static const int *stream_end;
 
 #ifdef REAL
 static atl_real tokreal;	      /* Scanned real number */
@@ -137,11 +139,9 @@ Exported atl_real rbuf0, rbuf1, rbuf2; /* Real temporary buffers */
 Exported dictword **ip = NULL;	      /* Instruction pointer */
 Exported dictword *curword = NULL;    /* Current word being executed */
 static int evalstat = ATL_SNORM;      /* Evaluator status */
-static Boolean defpend = False;       /* Token definition pending */
-static Boolean forgetpend = False;    /* Forget pending */
 static Boolean tickpend = False;      /* Take address of next word */
 static Boolean ctickpend = False;     /* Compile-time tick ['] pending */
-//static Boolean cbrackpend = False;    /* [COMPILE] pending */
+static Boolean cbrackpend = False;    /* [COMPILE] pending */
 static Boolean stringlit = False;     /* String literal anticipated */
 #ifdef BREAK
 static Boolean broken = False;	      /* Asynchronous break received */
@@ -188,8 +188,16 @@ static dictword *lookup(int word)
 {
     dictword *dw = dict;
 
+    if (word < 0 || word >= W__last) {
+    	DEBUG_E("Unknown word: ");
+    	DEBUG_U16(word);
+    	DEBUG_ENDL(NULL);
+
+    	return NULL;
+    }
+
 #ifdef WORDSUSED
-	dw->word_flags |= WORDUSED; /* Mark this word used */
+	dw->flags |= WORDUSED; /* Mark this word used */
 #endif
 
     return dw;
@@ -241,6 +249,21 @@ prim P_plus(void)			      /* Add two numbers */
     S1 += S0;
     Pop;
 }
+
+prim P_print(void) {
+	Sl(1);
+	DEBUG_I("U32 on top of stack: ");
+    DEBUG_U32(S0);
+	DEBUG_ENDL(NULL);
+}
+
+// These functions are documented here:
+// https://www.fourmilab.ch/atlast/atlast.html
+//
+// To enable:
+// 1. Surround with #endif and #if 0
+// 2. Add to atlast_verbs.h
+// 3. Add to atl_init(void)
 
 #if 0
 prim P_minus(void)			      /* Subtract two numbers */
@@ -574,8 +597,8 @@ Exported void P_create(void)	      /* Create new word */
     defpend = True;		      /* Set definition pending */
     Ho(Dictwordl);
     createword = (dictword *) hptr;   /* Develop address of word */
-    createword->wname = NULL;	      /* Clear pointer to name string */
-    createword->wcode = P_var;	      /* Store default code */
+    createword->name = NULL;	      /* Clear pointer to name string */
+    createword->code = P_var;	      /* Store default code */
     hptr += Dictwordl;		      /* Allocate heap space for word */
 }
 
@@ -596,7 +619,7 @@ prim P_constant(void)		      /* Declare constant */
 {
     Sl(1);
     P_create(); 		      /* Create dictionary item */
-    createword->wcode = P_con;	      /* Set code to constant push */
+    createword->code = P_con;	      /* Set code to constant push */
     Ho(1);
     Hstore = S0;		      /* Store constant value in body */
     Pop;
@@ -670,7 +693,7 @@ prim P_array(void)			      /* Declare array */
     asize = (asize + (sizeof(stackitem) - 1)) / sizeof(stackitem);
     Ho(asize + nsubs + 2);	      /* Reserve space for array and header */
     P_create(); 		      /* Create variable */
-    createword->wcode = P_arraysub;   /* Set method to subscript calculate */
+    createword->code = P_arraysub;   /* Set method to subscript calculate */
     Hstore = nsubs;		      /* Header <- Number of subscripts */
     Hstore = S0;		      /* Header <- Fundamental element size */
     isp = &S2;
@@ -1125,7 +1148,7 @@ prim P_2constant(void)		      /* Declare double word constant */
 {
     Sl(1);
     P_create(); 		      /* Create dictionary item */
-    createword->wcode = P_2con;       /* Set code to constant push */
+    createword->code = P_2con;       /* Set code to constant push */
     Ho(2);
     Hstore = S1;		      /* Store double word constant value */
     Hstore = S0;		      /* in the two words of body */
@@ -1160,17 +1183,24 @@ prim P_2at(void)			      /* Fetch double value from address */
 /*  Data transfer primitives  */
 
 #endif
+
+prim P_noop(void){
+}
+
 prim P_dolit(void)			      /* Push instruction stream literal */
 {
     So(1);
 #ifdef TRACE
     if (atl_trace) {
-        V printf("%ld ", (long) *ip);
+        DEBUG_I("lit ");
+        DEBUG_U32(*ip);
+        DEBUG_ENDL(NULL);
     }
 #endif
     Push = ptr_to_stackitem(*ip++);	      /* Push the next datum from the
 					 instruction stream. */
 }
+
 #if 0
 
 /*  Control flow primitives  */
@@ -1498,8 +1528,7 @@ prim P_abortq(void) 		      /* Abort, printing message */
 #endif /* WALKBACK */
 	P_abort();		      /* Abort */
 	atl_comment = state = Falsity;/* Reset all interpretation state */
-	forgetpend = defpend = stringlit =
-		     tickpend = ctickpend = False;
+	stringlit = tickpend = ctickpend = False;
     }
 }
 
@@ -1507,7 +1536,7 @@ prim P_abortq(void) 		      /* Abort, printing message */
 
 prim P_immediate(void)		      /* Mark most recent word immediate */
 {
-    dict->wname[0] |= IMMEDIATE;
+    dict->name[0] |= IMMEDIATE;
 }
 
 prim P_lbrack(void) 		      /* Set interpret state */
@@ -1562,7 +1591,7 @@ prim P_does(void)			      /* Specify method for word */
        will fetch that code address by backing up past the start of
        the word and seting IP to it.  Note that FORGET must recognise
        such words (by the presence of the pointer to P_dodoes() in
-       their wcode field, in case you're wondering), and make sure to
+       their code field, in case you're wondering), and make sure to
        deallocate the heap word containing the link when a
        DOES>-defined word is deleted.  */
 
@@ -1581,7 +1610,7 @@ prim P_does(void)			      /* Specify method for word */
 	*sp++ = ptr_to_stackitem(ip);       /* Store DOES> clause address before
                                          word's definition structure. */
 	createword = (dictword *) sp; /* Move word definition down 1 item */
-	createword->wcode = P_dodoes; /* Set code field to indirect jump */
+	createword->code = P_dodoes; /* Set code field to indirect jump */
 
 	/* Now simulate an EXIT to bail out of the definition without
 	   executing the DOES> clause at definition time. */
@@ -1609,7 +1638,7 @@ prim P_semicolon(void)		      /* End compilation */
     /* We wait until now to plug the P_nest code so that it will be
        present only in completed definitions. */
     if (createword != NULL)
-	createword->wcode = P_nest;   /* Use P_nest for code */
+	createword->code = P_nest;   /* Use P_nest for code */
     createword = NULL;		      /* Flag no word being created */
 }
 
@@ -1622,13 +1651,12 @@ prim P_tick(void)			      /* Take address of next word */
        report an error.  Since we can't call back to the
        calling program for more input, we're stuck. */
 
-    i = token();	      /* Scan for next token */
-    if (i != TokNull) {
-	if (i == TokWord) {
+    i = next_token();	      /* Scan for next token */
+    if (i != T_null) {
+	if (i == T_word) {
 	    dictword *di;
 
-	    ucase(tokbuf);
-	    if ((di = lookup(tokbuf)) != NULL) {
+	    if ((di = lookup(next_arg())) != NULL) {
 		So(1);
 		Push = ptr_to_stackitem(di); /* Push word compile address */
 	    } else {
@@ -1718,8 +1746,8 @@ prim P_wordsused(void)		      /* List words used by program */
     dictword *dw = dict;
 
     while (dw != NULL) {
-	if (*(dw->wname) & WORDUSED) {
-//           V printf("\n%s", dw->wname + 1);
+	if (*(dw->name) & WORDUSED) {
+//           V printf("\n%s", dw->name + 1);
 	}
 #ifdef Keyhit
 	if (kbquit()) {
@@ -1736,8 +1764,8 @@ prim P_wordsunused(void)		      /* List words not used by program */
     dictword *dw = dict;
 
     while (dw != NULL) {
-	if (!(*(dw->wname) & WORDUSED)) {
-//           V printf("\n%s", dw->wname + 1);
+	if (!(*(dw->name) & WORDUSED)) {
+//           V printf("\n%s", dw->name + 1);
 	}
 #ifdef Keyhit
 	if (kbquit()) {
@@ -1820,9 +1848,8 @@ prim P_fwdresolve(void)		      /* Emit forward jump offset */
 #endif
 
 /* Dictionary */
-#include "atlast_verbs.h"
 
-Exported dictword dict[F_xxx];
+Exported dictword dict[W__last];
 
 #if 0
 static struct primfcn primt[] = {
@@ -2075,11 +2102,11 @@ static void pwalkback(void)
     if (atl_walkback && ((curword != NULL) || (wbptr > wback))) {
         V printf("Walkback:\n");
 	if (curword != NULL) {
-            V printf("   %s\n", curword->wname + 1);
+            V printf("   %s\n", curword->name + 1);
 	}
 	while (wbptr > wback) {
 	    dictword *wb = *(--wbptr);
-            V printf("   %s\n", wb->wname + 1);
+            V printf("   %s\n", wb->name + 1);
 	}
     }
 }
@@ -2089,15 +2116,14 @@ static void pwalkback(void)
 
 static void trouble(const char *kind)
 {
-#ifdef MEMMESSAGE
-    V printf("\n%s.\n", kind);
-#endif
+	DEBUG_E(kind);
+	DEBUG_ENDL(NULL);
 #ifdef WALKBACK
     pwalkback();
 #endif /* WALKBACK */
     P_abort();			      /* Abort */
     state = Falsity;    /* Reset all interpretation state */
-    forgetpend = defpend = stringlit =
+    stringlit =
 	tickpend = ctickpend = False;
 }
 
@@ -2189,17 +2215,16 @@ static void exword(dictword *wp)
     curword = wp;
 #ifdef TRACE
     if (atl_trace) {
-        V printf("\nTrace: %s ", curword->wname + 1);
+    	DEBUG_I("Trace: ");
+    	DEBUG_STR(wp->name);
+    	DEBUG_ENDL(NULL);
     }
 #endif /* TRACE */
-    (*curword->wcode)();	      /* Execute the first word */
+    (*curword->code)();	      /* Execute the first word */
     while (ip != NULL) {
 #ifdef BREAK
-#ifdef Keybreak
-	Keybreak();		      /* Poll for asynchronous interrupt */
-#endif
 	if (broken) {		      /* Did we receive a break signal */
-            trouble("Break signal");
+        trouble("Break signal");
 	    evalstat = ATL_BREAK;
 	    break;
 	}
@@ -2207,20 +2232,31 @@ static void exword(dictword *wp)
 	curword = *ip++;
 #ifdef TRACE
 	if (atl_trace) {
-            V printf("\nTrace: %s ", curword->wname + 1);
+    	DEBUG_I("Trace: ");
+    	DEBUG_STR(curword->name);
+    	DEBUG_ENDL(NULL);
 	}
 #endif /* TRACE */
-	(*curword->wcode)();	      /* Execute the next word */
+	(*curword->code)();	      /* Execute the next word */
     }
     curword = NULL;
 }
+
+#ifdef TRACE
+#define add_dict(word, wcode, wname) dict[word].code=wcode; dict[word].name = wname;
+#else
+#define add_dict(word, code, name) dict[word].code=code;
+#endif
 
 void atl_init(void)
 {
 	MemSet(dict, 0, sizeof(dict));
 
-	dict[F_lit].wcode = P_dolit;
-	dict[F_plus].wcode = P_plus;
+	// Recognized words
+	add_dict(W_noop, P_noop, "noop")
+	add_dict(W_lit, P_dolit, "lit")
+	add_dict(W_plus, P_plus, "+")
+	add_dict(W_print, P_print, "print")
 
 	stk = stackbot = stack;
 #ifdef MEMSTAT
@@ -2331,48 +2367,93 @@ void atl_break(void)
 }
 #endif /* BREAK */
 
-static TokenType token(void) {
-	int i = *instream;
-
-	if (i == TokInt) {
-		++instream;
-		tokint = *instream;
-		++instream;
+static uint16 next_arg(void) {
+	if (instream >= stream_end) {
+		return 0;
 	}
-
-	return i;
+	return *instream++;
 }
+
+//static Token next_token(void) {
+//	return next_arg();
+//}
+#define next_token() next_arg()
 
 /*  ATL_EVAL  --  Evaluate a string containing ATLAST words.  */
 
-int atl_eval(const int *sp)
+int atl_eval(const int *stream, int stream_length)
 {
-    TokenType i;
+    Token i;
 
 #undef Memerrs
 #define Memerrs evalstat
-    instream = sp;
+    instream = stream;
+    stream_end = instream+stream_length;
     evalstat = ATL_SNORM;	      /* Set normal evaluation status */
 #ifdef BREAK
     broken = False;		      /* Reset asynchronous break */
 #endif
     
-    while ((evalstat == ATL_SNORM) && (i = token()) != TokNull) {
+    while ((evalstat == ATL_SNORM) && (i = next_token()) != T_null) {
 
 	switch (i) {
-	    case TokInt:
+	    case T_word:
+		if (tickpend) {
+		    tickpend = False;
+		    dictword * di = lookup(next_arg());
+		    if (di != NULL) {
+		    	So(1);
+			   	Push = ptr_to_stackitem(di); /* Push word compile address */
+		    } else {
+		    	evalstat = ATL_UNDEFINED;
+		    }
+		}
+		else {
+		    dictword * di = lookup(next_arg());
+		    if (di != NULL) {
+                        /* Test the state.  If we're interpreting, execute
+                           the word in all cases.  If we're compiling,
+			   compile the word unless it is a compiler word
+			   flagged for immediate execution by the
+			   presence of a space as the first character of
+			   its name in the dictionary entry. */
+			if (state &&
+			    (cbrackpend || ctickpend ||
+			     !(di->flags & IMMEDIATE))) {
+			    if (ctickpend) {
+				/* If a compile-time tick preceded this
+				   word, compile a (lit) word to cause its
+				   address to be pushed at execution time. */
+				Ho(1);
+				Hstore = ptr_to_stackitem(lookup(W_lit));   /* Push (lit) */
+				ctickpend = False;
+			    }
+			    cbrackpend = False;
+			    Ho(1);	  /* Reserve stack space */
+			    Hstore = ptr_to_stackitem(di);/* Compile word address */
+			} else {
+			    exword(di);   /* Execute word */
+			}
+		    } else {
+			evalstat = ATL_UNDEFINED;
+			state = Falsity;
+		    }
+		}
+		break;
+
+	    case T_int:
 		if (state) {
 		    Ho(2);
-		    Hstore = ptr_to_stackitem(lookup(F_lit));   /* Push (lit) */
-		    Hstore = tokint;  /* Compile actual literal */
+		    Hstore = ptr_to_stackitem(lookup(W_lit));   /* Push (lit) */
+		    Hstore = next_arg();  /* Compile actual literal */
 		} else {
 		    So(1);
-		    Push = tokint;
+		    Push = next_arg();
 		}
 		break;
 
 #ifdef REAL
-	    case TokReal:
+	    case T_real:
 		if (state) {
 		    int i;
     	    	    union {
@@ -2403,7 +2484,8 @@ int atl_eval(const int *sp)
 #endif /* REAL */
 
 	    default:
-//                V printf("\nUnknown token type %d\n", i);
+            DEBUG_E("Unknown return type from next_token()");
+            DEBUG_ENDL(NULL);
 		break;
 	}
     }

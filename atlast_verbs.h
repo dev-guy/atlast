@@ -4,19 +4,23 @@
 // Token types
 
 typedef enum {
-    TokNull,     		  /* Nothing scanned */
-    TokWord,     		  /* Word stored in token name buffer */
-    TokInt,    		      /* Integer scanned */
-    TokReal,     	      /* Real number scanned */
-    TokString  		      /* String scanned */
-} TokenType;
+    T_null,     		  /* Nothing scanned */
+    T_word,     		  /* Word stored in token name buffer */
+    T_int,    		      /* Integer scanned */
+    T_real,     	      /* Real number scanned */
+    // T_String  		  /* String scanned */
+} Token;
 
 // Functions 
+// Never reorder these!
 
 typedef enum {
-    F_lit,
-	F_plus,
-	F_xxx // This is the last item
-} FunctionType;
+    W_noop, // This must be first
+    W_lit,
+	W_print,
+	W_plus,
+
+	W__last // This must be the last item
+} Word;
 
 #endif

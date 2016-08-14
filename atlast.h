@@ -63,7 +63,7 @@ extern atl_int atl_walkback;	      /* Error walkback enabled mode */
 /*  Entry points  */
 
 extern void atl_init(void), atl_break(void);
-extern int atl_eval(const int *);
+extern int atl_eval(const int *stream, int length);
 extern void atl_memstat(void);
 
 #endif
